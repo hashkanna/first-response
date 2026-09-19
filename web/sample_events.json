@@ -1,0 +1,197 @@
+[
+  {
+    "incident_id": "INC-2026-0919-042",
+    "stage": "alerted",
+    "at": "2026-09-19T14:02:00Z",
+    "message": "Recorded scenario: checkout error rate is 38%, above the 5% threshold.",
+    "evidence": [
+      {
+        "evidence_id": "error-rate",
+        "kind": "metric",
+        "summary": "Checkout error rate crossed 38% after the latest deploy.",
+        "detail": "window: 30 s\nservice: checkout\nrequests: 150\nfailed: 57 (38%)\nalert threshold: 5%",
+        "source_ref": "recorded:checkout/error_rate"
+      }
+    ]
+  },
+  {
+    "incident_id": "INC-2026-0919-042",
+    "stage": "investigating",
+    "at": "2026-09-19T14:02:05Z",
+    "message": "Correlating failing payment traces with the most recent deploy."
+  },
+  {
+    "incident_id": "INC-2026-0919-042",
+    "stage": "investigating",
+    "at": "2026-09-19T14:02:13Z",
+    "message": "Payment calls time out 3 milliseconds after they start.",
+    "evidence": [
+      {
+        "evidence_id": "payment-trace",
+        "kind": "trace",
+        "summary": "Payment provider calls exceed the configured 3 ms deadline.",
+        "detail": "checkout.submit  POST /checkout  503\n\u2514\u2500 payments.authorize  3.2 ms  ERROR\n   provider: sandbox-payments\n   timeout_ms: 3\n   TimeoutError: payment provider exceeded deadline",
+        "source_ref": "recorded:trace/9a4f2b8c"
+      }
+    ]
+  },
+  {
+    "incident_id": "INC-2026-0919-042",
+    "stage": "investigating",
+    "at": "2026-09-19T14:02:21Z",
+    "message": "The latest deploy changed the payment timeout from 3000 to 3.",
+    "evidence": [
+      {
+        "evidence_id": "deploy-diff",
+        "kind": "deploy_diff",
+        "summary": "Commit a1b2c3d changed only the payment timeout value.",
+        "detail": "commit a1b2c3d  tune payment timeout\n--- a/app/config.py\n+++ b/app/config.py\n@@ -4,3 +4,3 @@\n # Payment provider deadline in milliseconds.\n-PAYMENT_TIMEOUT_MS = 3000\n+PAYMENT_TIMEOUT_MS = 3\n PAYMENT_RETRIES = 1",
+        "source_ref": "a1b2c3d:app/config.py"
+      }
+    ]
+  },
+  {
+    "incident_id": "INC-2026-0919-042",
+    "stage": "cause_found",
+    "at": "2026-09-19T14:02:28Z",
+    "message": "The deploy supplied seconds to a millisecond setting: the payment deadline is now 1,000 times shorter.",
+    "root_cause": {
+      "service": "payments",
+      "file": "app/config.py",
+      "line": 5,
+      "commit": "a1b2c3d",
+      "explanation": "The latest deploy changed PAYMENT_TIMEOUT_MS from 3000 to 3. The payment client interprets this as milliseconds, so routine provider calls time out.",
+      "evidence_ids": [
+        "payment-trace",
+        "deploy-diff",
+        "payment-code"
+      ],
+      "confidence": 0.98
+    },
+    "evidence": [
+      {
+        "evidence_id": "payment-code",
+        "kind": "code",
+        "summary": "The payment client converts PAYMENT_TIMEOUT_MS to seconds.",
+        "detail": "12  async def authorize(amount):\n13      async with asyncio.timeout(\n14          settings.PAYMENT_TIMEOUT_MS / 1000\n15      ):\n16          return await provider.charge(amount)",
+        "source_ref": "app/payments.py:14"
+      }
+    ]
+  },
+  {
+    "incident_id": "INC-2026-0919-042",
+    "stage": "reproduced",
+    "at": "2026-09-19T14:02:39Z",
+    "message": "Recorded sandbox result: checkout fails against a provider with a normal 120 ms response.",
+    "evidence": [
+      {
+        "evidence_id": "repro-result",
+        "kind": "exception",
+        "summary": "The reproducing test fails on the faulty configuration.",
+        "detail": "[RECORDED REHEARSAL]\ntests/test_repro_payment_timeout.py::test_checkout_accepts_normal_provider_latency FAILED\nE   PaymentUnavailable: Provider timed out\nProvider latency: 120 ms; configured deadline: 3 ms",
+        "source_ref": "recorded:sandbox/repro-042"
+      }
+    ]
+  },
+  {
+    "incident_id": "INC-2026-0919-042",
+    "stage": "fixes_proposed",
+    "at": "2026-09-19T14:02:45Z",
+    "message": "Three candidate patches are ready for isolated verification.",
+    "candidates": [
+      {
+        "candidate_id": "restore-timeout",
+        "title": "Restore payment timeout",
+        "rationale": "Restore the previous 3,000 ms timeout. One configuration line changes; payment validation stays intact.",
+        "patch": "--- a/app/config.py\n+++ b/app/config.py\n@@ -4,3 +4,3 @@\n # Payment provider deadline in milliseconds.\n-PAYMENT_TIMEOUT_MS = 3\n+PAYMENT_TIMEOUT_MS = 3000\n PAYMENT_RETRIES = 1\n",
+        "files_touched": [
+          "app/config.py"
+        ]
+      },
+      {
+        "candidate_id": "raise-timeout",
+        "title": "Raise timeout to 30 ms",
+        "rationale": "Try a smaller deadline increase to test whether the provider can meet a tighter latency budget.",
+        "patch": "--- a/app/config.py\n+++ b/app/config.py\n@@ -4,3 +4,3 @@\n # Payment provider deadline in milliseconds.\n-PAYMENT_TIMEOUT_MS = 3\n+PAYMENT_TIMEOUT_MS = 30\n PAYMENT_RETRIES = 1\n",
+        "files_touched": [
+          "app/config.py"
+        ]
+      },
+      {
+        "candidate_id": "skip-provider",
+        "title": "Bypass provider timeout",
+        "rationale": "Catch provider timeouts and accept checkout. This may hide errors; the payment safety tests must decide.",
+        "patch": "--- a/app/payments.py\n+++ b/app/payments.py\n@@ -18,3 +18,3 @@\n     except TimeoutError:\n-        raise PaymentUnavailable(\"Provider timed out\")\n+        return PaymentResult(status=\"approved\")\n",
+        "files_touched": [
+          "app/payments.py"
+        ]
+      }
+    ]
+  },
+  {
+    "incident_id": "INC-2026-0919-042",
+    "stage": "verifying",
+    "at": "2026-09-19T14:02:49Z",
+    "message": "Testing each candidate patch against the reproduction and the complete 24-test suite."
+  },
+  {
+    "incident_id": "INC-2026-0919-042",
+    "stage": "verifying",
+    "at": "2026-09-19T14:03:04Z",
+    "message": "The 30 ms timeout still fails the reproduction and four suite tests.",
+    "results": [
+      {
+        "candidate_id": "raise-timeout",
+        "applied": true,
+        "repro_passed": false,
+        "suite_passed": false,
+        "tests_run": 24,
+        "tests_failed": 4,
+        "duration_s": 12.7,
+        "log_tail": "[RECORDED REHEARSAL \u2014 not a live sandbox run]\nReproduction: FAILED\nSuite: 20 passed, 4 failed\nE PaymentUnavailable: provider exceeds 30 ms deadline"
+      }
+    ]
+  },
+  {
+    "incident_id": "INC-2026-0919-042",
+    "stage": "verifying",
+    "at": "2026-09-19T14:03:12Z",
+    "message": "Bypassing the provider fixes the symptom but fails three payment safety tests.",
+    "results": [
+      {
+        "candidate_id": "skip-provider",
+        "applied": true,
+        "repro_passed": true,
+        "suite_passed": false,
+        "tests_run": 24,
+        "tests_failed": 3,
+        "duration_s": 18.5,
+        "log_tail": "[RECORDED REHEARSAL \u2014 not a live sandbox run]\nReproduction: PASSED\nSuite: 21 passed, 3 failed\nFAILED test_timeout_never_marks_order_paid\nFAILED test_failed_payment_does_not_create_receipt\nFAILED test_payment_requires_provider_authorization"
+      }
+    ]
+  },
+  {
+    "incident_id": "INC-2026-0919-042",
+    "stage": "verifying",
+    "at": "2026-09-19T14:03:20Z",
+    "message": "Restoring the original timeout passes the reproduction and all 24 suite tests.",
+    "results": [
+      {
+        "candidate_id": "restore-timeout",
+        "applied": true,
+        "repro_passed": true,
+        "suite_passed": true,
+        "tests_run": 24,
+        "tests_failed": 0,
+        "duration_s": 23.8,
+        "log_tail": "[RECORDED REHEARSAL \u2014 not a live sandbox run]\nPatch applied cleanly.\nReproduction: 1 passed\nSuite: 24 passed\nNo test failures."
+      }
+    ]
+  },
+  {
+    "incident_id": "INC-2026-0919-042",
+    "stage": "fix_verified",
+    "at": "2026-09-19T14:03:24Z",
+    "message": "Recorded verification complete: one of three candidates passed the reproduction and all 24 suite tests. Ready for human review."
+  }
+]

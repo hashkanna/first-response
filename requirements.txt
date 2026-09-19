@@ -1,0 +1,9 @@
+fastapi>=0.116,<1.0
+pydantic>=2.11,<3.0
+uvicorn[standard]>=0.35,<1.0
+pytest>=8.4,<10.0
+httpx>=0.28,<1.0
+modal>=1.5.5,<2.0
+google-genai>=2.24,<3.0
+pydantic-ai-slim[google]>=2.46,<3.0
+python-dotenv>=1.1,<2.0

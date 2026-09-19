@@ -1,0 +1,9 @@
+from shop.app.cart import Cart
+from shop.app.checkout import checkout
+
+def test_repro_missing_coupon():
+    cart = Cart()
+    cart.add("coffee")
+    receipt = checkout(cart)
+    assert receipt["payment"]["amount_cents"] == 1200
+    assert receipt["discount_cents"] == 0

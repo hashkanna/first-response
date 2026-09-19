@@ -1,0 +1,111 @@
+FIRST RESPONSE — EDITED DEMO NARRATION GUIDE
+
+This is a guide for the real capture manifest, not a finished results transcript.
+Use only screenshots from the actual run. Replace every bracketed factual slot
+with a checked fact, or omit that sentence. The assembler rejects unresolved
+factual placeholders. It does not infer pass counts or timing from screenshots.
+
+The finished video always says EDITED HIGHLIGHTS / NARRATION: macOS SAY.
+Do not describe it as an uninterrupted capture, native Gemini conversation, or
+the original live audio. The speech here is separately synthesized narration.
+
+Suggested narrative, approximately two minutes after actual facts are inserted:
+
+01 — The incident workbench
+First Response turns an incident into a sequence of evidence, tested repairs,
+and an explicit operator decision. These are edited highlights from an actual
+run, with separate narration.
+
+02 — A real code fault
+We inject [FAULT_DESCRIPTION] into a working copy of the toy checkout service.
+The checked-in source stays intact. Actual checkout probes now fail, and the
+workbench records the exception and the changed source line.
+
+03 — Evidence before a diagnosis
+A Pydantic AI investigator sends the observed exception, source, and change
+diff to Gemini. Its typed diagnosis must cite real evidence and identify the
+matching file and line. Unsupported output stops the investigation.
+
+04 — Repairs derived from the broken source
+A second Gemini agent proposes three distinct repairs from the broken code
+and observed evidence. It is not shown the authored repair library. Each edit
+is deliberately bounded and tied to the original source fingerprint.
+
+05 — Independent verification
+Each candidate runs in its own network-disabled Modal sandbox, with the
+reproduction and the unchanged regression suite. [VERIFIED_RESULT_SENTENCE]
+These are the recorded execution results. The model does not choose the counts.
+
+06 — Inspect the exact change
+The operator inspects the source diff and the candidate's verification result.
+The application will accept only a verified candidate from this incident and
+this exact source snapshot. Inspection alone does not apply it.
+
+07 — Human approval
+The operator explicitly approves the selected repair. [VOICE_DESCRIPTION]
+The chosen edit is saved as data in the runtime copy. Generated modules are
+never imported or executed on the host.
+
+08 — Verify the recovery
+Approval triggers another Modal run: the reproduction, the regression suite,
+and actual checkout probes. [ACTUAL_RECOVERY_SENTENCE]
+The result is a downloadable patch and a recorded approval, not a production
+deployment. This demo covers two controlled fault types; the verification and
+approval pattern is the point.
+
+FACTUAL SLOT RULES
+
+- FAULT_DESCRIPTION: use the actual injected code change shown in that run.
+- VERIFIED_RESULT_SENTENCE: state only the actual candidate outcomes and test
+  counts shown by the saved VerifyResult records. All three passing is valid.
+- VOICE_DESCRIPTION: describe only a voice interaction actually captured and
+  verified. Otherwise omit this sentence; typed approval is a complete demo.
+- ACTUAL_RECOVERY_SENTENCE: use the actual post-approval suite and checkout probe
+  result. Include elapsed time only if measured from that same incident.
+- Avoid saying a PR was opened, a production service was repaired, the video is
+  native 4K, or the narration is the original Gemini voice unless separately true.
+
+MANIFEST AND BUILD
+
+Put the real screenshots in .runtime/demo-captures and create manifest.json:
+
+{
+  "title": "First Response — verified incident repair",
+  "facts": {"incident_id": "the actual incident ID", "results_receipt": "path to its saved receipt"},
+  "scenes": [
+    {
+      "image": "01-alert.png",
+      "heading": "An actual checkout failure",
+      "narration": "The exact factual narration approved for this screenshot."
+    }
+  ]
+}
+
+Add the remaining real scenes. Narration is mandatory; no results are invented
+by the script. Image paths resolve relative to the manifest. Optional per-scene
+"duration" is a minimum hold in seconds and must fit its measured narration.
+Spare target time is distributed among the scenes as quiet screenshot holds.
+
+Validate first:
+  python3 scripts/make_demo_video.py --manifest .runtime/demo-captures/manifest.json --validate-only
+
+Assemble a 120-second export:
+  python3 scripts/make_demo_video.py --manifest .runtime/demo-captures/manifest.json --target-duration 120
+
+Use --voice to choose an already installed macOS voice, --rate to deliberately
+change narration speed, and --overwrite only when revising an existing export.
+If the speech cannot fit, the script fails and asks for shorter narration; it
+never silently drops scenes or time-stretches speech. A target below 120 seconds
+is also allowed. No target above 120 seconds is accepted.
+
+Outputs in .runtime/demo-video:
+  first-response-demo.mp4  — 1920x1080 H.264/AAC with burned captions and subtitle track
+  narration.wav           — frame-aligned local narration, including scene holds
+  subtitles.srt           — exact measured phrase timing with short frame-aligned padding
+  receipt.json            — source hashes, timings, narration, export details and facts supplied
+  ffprobe.json            — independently probed stream details and duration
+
+The script uses Python's standard library, macOS say, native Swift/AppKit for
+text rendering, and local ffmpeg/ffprobe. It uses no paid API and controls no UI.
+Screenshots are fitted without cropping into a dark 1080p frame; this is an edit
+derivative, not a claim about the native resolution of the captured interface.

@@ -1,0 +1,7 @@
+from shop.app.cart import Cart
+from shop.app.checkout import checkout
+
+def test_repro_payment_timeout():
+    cart = Cart()
+    cart.add("coffee")
+    assert checkout(cart)["payment"]["status"] == "paid"

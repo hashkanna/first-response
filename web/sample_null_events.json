@@ -1,0 +1,181 @@
+[
+  {
+    "incident_id": "INC-2026-0919-043",
+    "stage": "alerted",
+    "at": "2026-09-19T14:02:00Z",
+    "message": "Recorded scenario: 31% of checkout requests fail; affected carts have no coupon.",
+    "evidence": [
+      {
+        "evidence_id": "null-rate",
+        "kind": "metric",
+        "summary": "Checkout error rate is 31%, above the 5% threshold.",
+        "detail": "window: 30 s\nrequests: 150\nfailed: 47 (31.3%)\naffected: carts without coupons",
+        "source_ref": "recorded:checkout/error_rate"
+      }
+    ]
+  },
+  {
+    "incident_id": "INC-2026-0919-043",
+    "stage": "investigating",
+    "at": "2026-09-19T14:02:05Z",
+    "message": "Comparing failed checkout requests with successful carts."
+  },
+  {
+    "incident_id": "INC-2026-0919-043",
+    "stage": "investigating",
+    "at": "2026-09-19T14:02:13Z",
+    "message": "Failed requests dereference a missing coupon.",
+    "evidence": [
+      {
+        "evidence_id": "null-trace",
+        "kind": "exception",
+        "summary": "Checkout raises AttributeError when the cart has no coupon.",
+        "detail": "Traceback (most recent call last):\n  File \"app/checkout.py\", line 27, in submit\n    coupon_code = cart.coupon.code\nAttributeError: 'NoneType' object has no attribute 'code'",
+        "source_ref": "recorded:trace/6c2f191b"
+      }
+    ]
+  },
+  {
+    "incident_id": "INC-2026-0919-043",
+    "stage": "cause_found",
+    "at": "2026-09-19T14:02:22Z",
+    "message": "The checkout refactor removed the guard for carts without a coupon.",
+    "root_cause": {
+      "service": "checkout",
+      "file": "app/checkout.py",
+      "line": 27,
+      "commit": "d4e5f6a",
+      "explanation": "Commit d4e5f6a reads cart.coupon.code unconditionally. Carts without a coupon raise AttributeError before a payment is attempted.",
+      "evidence_ids": [
+        "null-trace",
+        "null-diff"
+      ],
+      "confidence": 0.99
+    },
+    "evidence": [
+      {
+        "evidence_id": "null-diff",
+        "kind": "deploy_diff",
+        "summary": "The refactor removed the None check from coupon handling.",
+        "detail": "commit d4e5f6a  simplify coupon handling\n--- a/app/checkout.py\n+++ b/app/checkout.py\n@@ -26,3 +26,3 @@\n def submit(cart):\n-    coupon_code = cart.coupon.code if cart.coupon else None\n+    coupon_code = cart.coupon.code\n     return calculate_total(cart.items, coupon_code)",
+        "source_ref": "d4e5f6a:app/checkout.py"
+      }
+    ]
+  },
+  {
+    "incident_id": "INC-2026-0919-043",
+    "stage": "reproduced",
+    "at": "2026-09-19T14:02:34Z",
+    "message": "Recorded sandbox result: the no-coupon checkout reproduction fails with AttributeError.",
+    "evidence": [
+      {
+        "evidence_id": "null-repro",
+        "kind": "code",
+        "summary": "A cart without a coupon reproduces the failure.",
+        "detail": "[RECORDED REHEARSAL]\ndef test_checkout_without_coupon():\n    cart = Cart(items=[Item(\"coffee\", 1200)], coupon=None)\n    assert submit(cart).status == \"paid\"\n\nFAILED: AttributeError at app/checkout.py:27",
+        "source_ref": "recorded:tests/test_repro_no_coupon.py"
+      }
+    ]
+  },
+  {
+    "incident_id": "INC-2026-0919-043",
+    "stage": "fixes_proposed",
+    "at": "2026-09-19T14:02:40Z",
+    "message": "Three coupon-handling patches are ready for isolated verification.",
+    "candidates": [
+      {
+        "candidate_id": "guard-coupon",
+        "title": "Guard an absent coupon",
+        "rationale": "Read the coupon code only when a coupon exists. Preserve the existing validation path for supplied coupons.",
+        "patch": "--- a/app/checkout.py\n+++ b/app/checkout.py\n@@ -26,3 +26,3 @@\n def submit(cart):\n-    coupon_code = cart.coupon.code\n+    coupon_code = cart.coupon.code if cart.coupon is not None else None\n     return calculate_total(cart.items, coupon_code)\n",
+        "files_touched": [
+          "app/checkout.py"
+        ]
+      },
+      {
+        "candidate_id": "default-coupon",
+        "title": "Use an empty coupon",
+        "rationale": "Create a placeholder coupon to avoid a null dereference; validation may reject the empty code.",
+        "patch": "--- a/app/checkout.py\n+++ b/app/checkout.py\n@@ -26,3 +26,3 @@\n def submit(cart):\n-    coupon_code = cart.coupon.code\n+    coupon_code = (cart.coupon or Coupon(code=\"\")).code\n     return calculate_total(cart.items, coupon_code)\n",
+        "files_touched": [
+          "app/checkout.py"
+        ]
+      },
+      {
+        "candidate_id": "ignore-coupon",
+        "title": "Skip coupon handling",
+        "rationale": "Remove the coupon read entirely. This avoids the exception but risks dropping valid discounts.",
+        "patch": "--- a/app/checkout.py\n+++ b/app/checkout.py\n@@ -26,3 +26,3 @@\n def submit(cart):\n-    coupon_code = cart.coupon.code\n+    coupon_code = None\n     return calculate_total(cart.items, coupon_code)\n",
+        "files_touched": [
+          "app/checkout.py"
+        ]
+      }
+    ]
+  },
+  {
+    "incident_id": "INC-2026-0919-043",
+    "stage": "verifying",
+    "at": "2026-09-19T14:02:44Z",
+    "message": "Running the reproduction and all 24 suite tests against each patch."
+  },
+  {
+    "incident_id": "INC-2026-0919-043",
+    "stage": "verifying",
+    "at": "2026-09-19T14:02:59Z",
+    "message": "An empty placeholder coupon fails validation and three suite tests.",
+    "results": [
+      {
+        "candidate_id": "default-coupon",
+        "applied": true,
+        "repro_passed": false,
+        "suite_passed": false,
+        "tests_run": 24,
+        "tests_failed": 3,
+        "duration_s": 11.2,
+        "log_tail": "[RECORDED REHEARSAL \u2014 not a live sandbox run]\nReproduction: FAILED\nSuite: 21 passed, 3 failed\nE InvalidCoupon: coupon code cannot be empty"
+      }
+    ]
+  },
+  {
+    "incident_id": "INC-2026-0919-043",
+    "stage": "verifying",
+    "at": "2026-09-19T14:03:06Z",
+    "message": "Skipping coupons passes the reproduction but loses valid discounts.",
+    "results": [
+      {
+        "candidate_id": "ignore-coupon",
+        "applied": true,
+        "repro_passed": true,
+        "suite_passed": false,
+        "tests_run": 24,
+        "tests_failed": 2,
+        "duration_s": 17.1,
+        "log_tail": "[RECORDED REHEARSAL \u2014 not a live sandbox run]\nReproduction: PASSED\nSuite: 22 passed, 2 failed\nFAILED test_percentage_discount_applied\nFAILED test_fixed_discount_applied"
+      }
+    ]
+  },
+  {
+    "incident_id": "INC-2026-0919-043",
+    "stage": "verifying",
+    "at": "2026-09-19T14:03:15Z",
+    "message": "The explicit None guard passes the reproduction and all 24 suite tests.",
+    "results": [
+      {
+        "candidate_id": "guard-coupon",
+        "applied": true,
+        "repro_passed": true,
+        "suite_passed": true,
+        "tests_run": 24,
+        "tests_failed": 0,
+        "duration_s": 22.4,
+        "log_tail": "[RECORDED REHEARSAL \u2014 not a live sandbox run]\nPatch applied cleanly.\nReproduction: 1 passed\nSuite: 24 passed\nCoupon discounts remain intact."
+      }
+    ]
+  },
+  {
+    "incident_id": "INC-2026-0919-043",
+    "stage": "fix_verified",
+    "at": "2026-09-19T14:03:19Z",
+    "message": "Recorded verification complete: the None guard passes all checks. Ready for human review."
+  }
+]

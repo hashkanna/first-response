@@ -1,0 +1,21 @@
+[project]
+name = "voice-incident-war-room"
+version = "1.0.0"
+description = "A local incident workbench with executable fault fixtures and human-approved verified fixes."
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.116,<1.0",
+  "pydantic>=2.11,<3.0",
+  "uvicorn[standard]>=0.35,<1.0",
+  "pytest>=8.4,<10.0",
+  "httpx>=0.28,<1.0",
+  "modal>=1.5.5,<2.0",
+  "google-genai>=2.24,<3.0",
+  "pydantic-ai-slim[google]>=2.46,<3.0",
+  "python-dotenv>=1.1,<2.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "shop/tests", "live"]
+pythonpath = ["."]
+addopts = "-ra"

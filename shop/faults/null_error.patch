@@ -1,0 +1,11 @@
+--- a/app/checkout.py
++++ b/app/checkout.py
+@@ -5,7 +5,7 @@
+ def checkout(cart: Cart) -> dict:
+     if not cart.items:
+         raise ValueError("Cannot check out an empty cart")
+-    coupon_code = cart.coupon.code if cart.coupon is not None else None
++    coupon_code = cart.coupon.code
+     subtotal = cart.subtotal_cents
+     discount = subtotal // 10 if coupon_code == "SAVE10" else 0
+     payment = charge(subtotal - discount)
