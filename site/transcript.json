@@ -1,0 +1,42 @@
+[
+  {
+    "time": "00:00",
+    "heading": "First Response / evidence before action",
+    "text": "When checkout breaks, the operator needs evidence and a repair they can trust. First Response keeps the conversation going while an independent agent investigates and tests the code."
+  },
+  {
+    "time": "00:12",
+    "heading": "01 / inject a real fault",
+    "text": "These controls change a real Python shop. In this incident, a payment timeout falls from three thousand milliseconds to three. Checkout probes fail, and Pydantic AI validates Gemini's diagnosis against the trace and source."
+  },
+  {
+    "time": "00:28",
+    "heading": "02 / generate, then verify",
+    "text": "Gemini derives three edits from the broken code. It never sees our library of authored fixes. Each candidate runs separately in a network disabled Modal sandbox, against one reproduction and twenty four unchanged regression tests."
+  },
+  {
+    "time": "00:44",
+    "heading": "03 / a plausible repair can still fail",
+    "text": "Here is the important result. The five second timeout fixes the reproduction, but breaks timeout enforcement. A real regression rejects it. Two other candidates pass all twenty five checks. The model does not choose the test results."
+  },
+  {
+    "time": "01:00",
+    "heading": "04 / inspect the exact patch",
+    "text": "The operator selects the three thousand millisecond repair and reviews its exact diff. Approval checks the active incident and the fingerprint of the original source. Stale results cannot authorize changed code."
+  },
+  {
+    "time": "01:14",
+    "heading": "05 / verify recovery again",
+    "text": "Approval saves the patch as data. Generated code still executes only in Modal. Fresh verification passes twenty five tests and all twelve checkout probes. The shop recovers, and the approved patch is downloadable."
+  },
+  {
+    "time": "01:29",
+    "heading": "06 / the same loop, a different incident",
+    "text": "The missing coupon incident produces three distinct generated guards. All three pass. There is no staged loser. Both incidents use the same evidence, isolated execution, and human approval workflow. This is a controlled prototype, with a complete repair loop."
+  },
+  {
+    "time": "01:48",
+    "heading": "07 / Gemini Live explains the recovery",
+    "text": "The coupon incident was caused by a null error when evaluating cart dot coupon. The approved patch successfully passed reproduction tests and all checkout probes to resolve the issue."
+  }
+]

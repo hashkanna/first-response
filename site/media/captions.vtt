@@ -1,0 +1,113 @@
+WEBVTT
+
+1
+00:00:00.267 --> 00:00:04.933
+When checkout breaks, the operator needs evidence and a repair they can trust.
+
+2
+00:00:04.933 --> 00:00:10.867
+First Response keeps the conversation going while an independent agent investigates and tests the code.
+
+3
+00:00:12.533 --> 00:00:15.300
+These controls change a real Python shop.
+
+4
+00:00:15.300 --> 00:00:20.167
+In this incident, a payment timeout falls from three thousand milliseconds to three.
+
+5
+00:00:20.167 --> 00:00:26.467
+Checkout probes fail, and Pydantic AI validates Gemini's diagnosis against the trace and source.
+
+6
+00:00:28.467 --> 00:00:31.333
+Gemini derives three edits from the broken code.
+
+7
+00:00:31.333 --> 00:00:34.100
+It never sees our library of authored fixes.
+
+8
+00:00:34.100 --> 00:00:40.633
+Each candidate runs separately in a network disabled Modal sandbox, against one reproduction and twenty four
+
+9
+00:00:40.633 --> 00:00:42.700
+unchanged regression tests.
+
+10
+00:00:44.700 --> 00:00:46.567
+Here is the important result.
+
+11
+00:00:46.567 --> 00:00:51.433
+The five second timeout fixes the reproduction, but breaks timeout enforcement.
+
+12
+00:00:51.433 --> 00:00:53.300
+A real regression rejects it.
+
+13
+00:00:53.300 --> 00:00:56.400
+Two other candidates pass all twenty five checks.
+
+14
+00:00:56.400 --> 00:00:58.967
+The model does not choose the test results.
+
+15
+00:01:00.967 --> 00:01:05.867
+The operator selects the three thousand millisecond repair and reviews its exact diff.
+
+16
+00:01:05.867 --> 00:01:10.067
+Approval checks the active incident and the fingerprint of the original source.
+
+17
+00:01:10.067 --> 00:01:12.800
+Stale results cannot authorize changed code.
+
+18
+00:01:14.567 --> 00:01:16.667
+Approval saves the patch as data.
+
+19
+00:01:16.667 --> 00:01:19.567
+Generated code still executes only in Modal.
+
+20
+00:01:19.567 --> 00:01:24.333
+Fresh verification passes twenty five tests and all twelve checkout probes.
+
+21
+00:01:24.333 --> 00:01:27.833
+The shop recovers, and the approved patch is downloadable.
+
+22
+00:01:29.733 --> 00:01:33.767
+The missing coupon incident produces three distinct generated guards.
+
+23
+00:01:33.767 --> 00:01:35.033
+All three pass.
+
+24
+00:01:35.033 --> 00:01:36.733
+There is no staged loser.
+
+25
+00:01:36.733 --> 00:01:42.433
+Both incidents use the same evidence, isolated execution, and human approval workflow.
+
+26
+00:01:42.433 --> 00:01:46.100
+This is a controlled prototype, with a complete repair loop.
+
+27
+00:01:48.267 --> 00:01:53.467
+The coupon incident was caused by a null error when evaluating cart dot coupon.
+
+28
+00:01:53.467 --> 00:01:58.633
+The approved patch successfully passed reproduction tests and all checkout probes to resolve the issue.

@@ -1,6 +1,6 @@
 # Two-minute demo
 
-[Watch or download the demo](https://github.com/hashkanna/first-response/releases/tag/v1.0.0) · [Direct MP4](https://github.com/hashkanna/first-response/releases/download/v1.0.0/first-response-demo.mp4)
+[Watch the demo and explore the project](https://hashkanna.github.io/first-response/) · [Direct MP4](https://github.com/hashkanna/first-response/releases/download/v1.0.0/first-response-demo.mp4)
 
 The finished video is exactly **120 seconds**, 1920 × 1080 at 30 fps, with burned captions and a subtitle track. It combines eight actual UI screenshots from the generated timeout and coupon runs documented in [the execution evidence](generated-run-evidence.md).
 

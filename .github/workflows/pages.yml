@@ -1,0 +1,40 @@
+name: Publish showcase
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/configure-pages@v5
+      - name: Check showcase entrypoint and script
+        run: |
+          test -s site/index.html
+          test -s site/media/first-response-demo.mp4
+          node --check site/showcase.js
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: site
+      - name: Publish GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

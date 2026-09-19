@@ -6,7 +6,7 @@ Talk to the room while the investigation runs. Gemini explains the observed fail
 
 Built for the Tech: Europe Agentic AI Hack, London, 19 September 2026.
 
-[Watch the two-minute demo](https://github.com/hashkanna/first-response/releases/tag/v1.0.0) · [Public source](https://github.com/hashkanna/first-response) · [Continuous integration](https://github.com/hashkanna/first-response/actions/workflows/ci.yml)
+[Watch the two-minute demo](https://hashkanna.github.io/first-response/) · [Public source](https://github.com/hashkanna/first-response) · [Continuous integration](https://github.com/hashkanna/first-response/actions/workflows/ci.yml)
 
 ![Actual Gemini-generated candidate comparison and Modal test results](docs/media/repair-comparison.jpg)
 
