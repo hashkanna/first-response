@@ -10,6 +10,12 @@ export interface GeminiTranscriptEntry {
   source: 'gemini';
 }
 
+export interface GeminiReviewRequest {
+  requestId: string;
+  incidentId: string;
+  candidateId: string;
+}
+
 const LIVE_URL = `${HUB_HTTP_URL.replace(/^http/, 'ws')}/live`;
 type SessionAudio = {
   context: AudioContext;
@@ -29,6 +35,7 @@ export function useGeminiLive() {
   const [model, setModel] = useState<string | null>(null);
   const [transcript, setTranscript] = useState<GeminiTranscriptEntry[]>([]);
   const [latestCue, setLatestCue] = useState<Cue | null>(null);
+  const [reviewRequest, setReviewRequest] = useState<GeminiReviewRequest | null>(null);
   const audio = useRef<SessionAudio | null>(null);
   const socket = useRef<WebSocket | null>(null);
   const ready = useRef(false);
@@ -83,6 +90,7 @@ export function useGeminiLive() {
     setConnecting(false);
     setListening(false);
     setSpeaking(false);
+    setReviewRequest(null);
   }, [dispose]);
 
   useEffect(() => () => disconnect(), [disconnect]);
@@ -197,6 +205,12 @@ export function useGeminiLive() {
             setLatestCue({ scheduling: payload.scheduling as Cue['scheduling'], facts: payload.facts });
           } else if (payload.type === 'interrupted') {
             clearPlayback();
+          } else if (payload.type === 'review_requested' && typeof payload.request_id === 'string' && payload.request_id.length > 0 && typeof payload.incident_id === 'string' && payload.incident_id.length > 0 && typeof payload.candidate_id === 'string' && payload.candidate_id.length > 0) {
+            setReviewRequest({ requestId: payload.request_id, incidentId: payload.incident_id, candidateId: payload.candidate_id });
+          } else if (payload.type === 'reset') {
+            setReviewRequest(null);
+            setLatestCue(null);
+            clearPlayback();
           } else if ((payload.type === 'error' || payload.type === 'notice') && typeof payload.message === 'string') {
             setError(payload.message);
           }
@@ -218,13 +232,13 @@ export function useGeminiLive() {
     }
   }, [disconnect, clearPlayback, queuePlayback]);
 
-  const sendText = useCallback((text: string): boolean => {
+  const sendText = useCallback((text: string, incidentId?: string | null): boolean => {
     const clean = text.trim();
     if (!clean) return false;
     if (!ready.current || socket.current?.readyState !== WebSocket.OPEN) { setError('Connect Gemini Live before sending a message into the voice session.'); return false; }
     if (clean.length > 8_000) { setError('Keep Live messages below 8000 characters.'); return false; }
     clearPlayback();
-    socket.current.send(JSON.stringify({ type: 'text', text: clean }));
+    socket.current.send(JSON.stringify({ type: 'text', text: clean, incident_id: incidentId ?? null }));
     return true;
   }, [clearPlayback]);
 
@@ -237,5 +251,7 @@ export function useGeminiLive() {
     setListening(listening.current);
   }, []);
 
-  return { connect, disconnect, sendText, toggleListening, isConnected, isConnecting, isListening, isSpeaking, audioReceivedBytes, error, clearError: () => setError(null), transcript, latestCue, model };
+  const clearReviewRequest = useCallback(() => setReviewRequest(null), []);
+
+  return { connect, disconnect, sendText, toggleListening, isConnected, isConnecting, isListening, isSpeaking, audioReceivedBytes, error, clearError: () => setError(null), transcript, latestCue, model, reviewRequest, clearReviewRequest };
 }

@@ -356,8 +356,12 @@ export function useWarRoom() {
     });
   }, [addTranscript, request]);
 
-  const approveFix = useCallback(async (candidateId: string) => {
+  const approveFix = useCallback(async (candidateId: string, reviewedIncidentId?: string | null) => {
     const current = stateRef.current;
+    if (reviewedIncidentId !== undefined && reviewedIncidentId !== current.incidentId) {
+      setError('This review belongs to an earlier incident. Review the current repair again.');
+      return;
+    }
     if (!current.incidentId || !getVerifiedCandidates(current).some((candidate) => candidate.candidate_id === candidateId)) {
       setError('This candidate has not passed patch application, reproduction, and suite verification.');
       return;

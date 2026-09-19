@@ -52,7 +52,7 @@ the initial jobs alone are not evidence for those integrations.
 An actual browser run on 19 September 2026 completed incident
 `inc-0201b294375f` with the payment-timeout fault. The following facts were observed
 in the running UI/Live session and checked against the runtime diagnosis receipt
-and generated patch:
+and saved patch artifact:
 
 | Step | Observed evidence |
 | --- | --- |
@@ -87,7 +87,7 @@ modal to approve the change at approximately **15:58:18 London**. The incident
 resolved at **15:58:21 London** after another 25 passing post-apply checks and
 12 healthy checkout probes.
 
-The generated `.runtime/artifacts/inc-b9accbd6b783-coupon-guard.patch` exists and
+The saved `.runtime/artifacts/inc-b9accbd6b783-coupon-guard.patch` exists and
 restores the explicit `None` guard without removing valid coupon behavior. The
 connected Gemini Live session answered a typed question about rejected repairs
 through its tools and delivered spoken milestones with transcripts.
@@ -99,9 +99,10 @@ runs do not establish human speech capture, room acoustics or speech recognition
 quality. The 8.6- and 7.4-second observations are individual runs, not a benchmark
 or promised response time.
 
-The tested system remains a local toy shop with authored repair strategies. It
-does not establish production traffic, Logfire ingestion, arbitrary repair
-generation or a remote GitHub pull request.
+These earlier runs used authored repair strategies in a local toy shop.
+Subsequent [generated-repair runs](generated-run-evidence.md) establish bounded
+Gemini edits and Modal recovery. Neither establishes production traffic, Logfire
+ingestion, unrestricted repair generation or a remote GitHub pull request.
 
 ## Synthetic speech input, interruption and reconnect
 
@@ -161,3 +162,23 @@ After the successful run, **19 focused Live tests passed** with the locked local
 dependencies using `.venv/bin/python -m pytest live -q`. They cover the relay,
 approval gates, local credential setup and PCM activity boundaries. One upstream
 Starlette/AnyIO deprecation warning was emitted; no test failed.
+
+## Spoken approval boundary: correctly blocked
+
+The explicitly authorized synthetic approval check at
+`.runtime/voice-checks/20260919T153926Z/receipt.json` began at
+**15:39:26.516 UTC / 16:39:26 London**. It captured the verified missing-coupon
+incident `inc-a873fb3af5dd`, candidate `gen-1-2eb934a5b9`, and its source snapshot
+before streaming “Apply the verified fix.” as 57,690 bytes of 16 kHz PCM.
+Gemini 3.8 Live transcribed that command exactly and returned 242,400 bytes of
+native output audio, but its input transcription had `finished: null`.
+The approval tool was rejected and the same incident remained `fix_verified`
+with approval `null`; the bounded session timed out after 60 seconds.
+
+This is a recorded limitation, not a successful spoken approval. The documented
+[WebSocket protocol](https://ai.google.dev/api/live#bidigeneratecontentservercontent)
+does not guarantee ordering between input transcription and model-turn events.
+Consequently, model completion or an elapsed quiet interval cannot safely replace
+final user-transcription evidence. A delayed negative continuation must still
+prevent approval. Typed Live approval and explicit UI review remain available;
+the earlier successful typed approval evidence is separate from this check.

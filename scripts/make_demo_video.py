@@ -15,6 +15,9 @@ Manifest: {"title": "First Response", "scenes": [
 Image paths resolve relative to the manifest or --captures-dir. Optional scene
 duration values are minimum holds; actual speech must fit. Spare target time is
 distributed among scenes. Missing narration and unresolved placeholders fail.
+An optional scene audio WAV supplies actual recorded Gemini Live audio instead
+of say synthesis; narration must then be its exact transcript. Its captions
+divide the measured clip evenly and are explicitly labelled approximate.
 """
 
 from __future__ import annotations
@@ -40,6 +43,7 @@ LEAD_FRAMES = 8
 TRAIL_FRAMES = 12
 PHRASE_GAP_SECONDS = 0.09
 DISCLOSURE = "EDITED HIGHLIGHTS  /  NARRATION: macOS SAY"
+RECORDED_DISCLOSURE = "ACTUAL GEMINI LIVE AUDIO  /  EDITED HIGHLIGHTS  /  APPROXIMATE CAPTIONS"
 REPO = Path(__file__).resolve().parents[1]
 
 # Homebrew ffmpeg may lack drawtext/libass. AppKit renders text and fits the
@@ -110,7 +114,7 @@ for job in jobs {
              size: 15, color: NSColor(calibratedWhite: 0.66, alpha: 1), alignment: .right)
     drawText(job.heading, NSRect(x: 42, y: 983, width: 1836, height: 46),
              size: 31, color: .white, weight: .semibold)
-    NSColor(calibratedRed: 0.27, green: 0.63, blue: 1, alpha: 1).setFill()
+    NSColor(calibratedRed: 0.81, green: 0.91, blue: 0.65, alpha: 1).setFill()
     NSRect(x: 42, y: 970, width: 82, height: 3).fill()
     if !job.caption.isEmpty {
         drawText(job.caption, NSRect(x: 95, y: 48, width: 1730, height: 110),
@@ -172,11 +176,21 @@ def read_manifest(path: Path, captures_dir: Path | None) -> tuple[dict, list[dic
         image = (base / image).resolve() if not image.is_absolute() else image.resolve()
         if not image.is_file() or image.suffix.lower() not in {".png", ".jpg", ".jpeg"}:
             raise ValueError(f"Scene {index} screenshot is missing or unsupported: {image}")
+        audio_source = raw.get("audio")
+        if audio_source is not None:
+            if not isinstance(audio_source, str) or not audio_source.strip():
+                raise ValueError(f"Scene {index} audio must name an existing recorded WAV")
+            audio_source = Path(audio_source).expanduser()
+            audio_source = (base / audio_source).resolve() if not audio_source.is_absolute() else audio_source.resolve()
+            if not audio_source.is_file() or audio_source.suffix.lower() != ".wav":
+                raise ValueError(f"Scene {index} recorded WAV is missing or unsupported: {audio_source}")
         minimum = raw.get("duration")
         if minimum is not None and (isinstance(minimum, bool) or not isinstance(minimum, (int, float)) or not math.isfinite(minimum) or not 0 < minimum <= MAX_SECONDS):
             raise ValueError(f"Scene {index} duration must be a positive minimum hold of at most 120 seconds")
         scenes.append({"image": image, "heading": checked_text(raw.get("heading"), f"Scene {index} heading", maximum=95),
                        "narration": checked_text(raw.get("narration"), f"Scene {index} narration", maximum=2500),
+                       "audio_source": audio_source,
+                       "disclosure": RECORDED_DISCLOSURE if audio_source else DISCLOSURE,
                        "requested_duration": minimum})
     return document, scenes
 
@@ -248,9 +262,11 @@ def make_video(args: argparse.Namespace) -> dict:
         raise ValueError("Frame-rounded target exceeds 120 seconds")
     if args.validate_only:
         return {"validated": True, "scenes": len(scenes), "target_duration_s": target,
-                "notice": "Speech has not been synthesized; final duration is not yet verified."}
+                "notice": "Audio has not been synthesized or measured; final duration is not yet verified."}
 
-    commands = {name: tool(name) for name in ("say", "ffmpeg", "ffprobe", "swiftc")}
+    commands = {name: tool(name) for name in ("ffmpeg", "ffprobe", "swiftc")}
+    if any(scene["audio_source"] is None for scene in scenes):
+        commands["say"] = tool("say")
     output_dir = args.output_dir.expanduser().resolve()
     movie = output_dir / "first-response-demo.mp4"
     if movie.exists() and not args.overwrite:
@@ -258,9 +274,31 @@ def make_video(args: argparse.Namespace) -> dict:
     output_dir.mkdir(parents=True, exist_ok=True)
     for name in ("speech", "frames", "renderer-cache"):
         (output_dir / name).mkdir(exist_ok=True)
-    print(f"Synthesizing local narration for {len(scenes)} captured scenes.", flush=True)
+    print(f"Preparing recorded or locally synthesized audio for {len(scenes)} captured scenes.", flush=True)
     for scene_index, scene in enumerate(scenes, start=1):
         scene["parts"] = []
+        if scene["audio_source"] is not None:
+            wav_path = output_dir / "speech" / f"{scene_index:02}-recorded.wav"
+            scene["audio_source_sha256"] = digest(scene["audio_source"])
+            run([commands["ffmpeg"], "-hide_banner", "-loglevel", "error", "-y", "-i", str(scene["audio_source"]),
+                 "-map", "0:a:0", "-ar", str(SAMPLE_RATE), "-ac", "1", "-c:a", "pcm_s16le", str(wav_path)])
+            with wave.open(str(wav_path), "rb") as audio:
+                if (audio.getnchannels(), audio.getsampwidth(), audio.getframerate()) != (1, 2, SAMPLE_RATE):
+                    raise RuntimeError("Unexpected recorded-audio PCM format")
+                samples = audio.getnframes()
+            if samples <= 0:
+                raise ValueError(f"Scene {scene_index} recorded audio is empty")
+            frames = math.ceil(samples / SAMPLES_PER_FRAME)
+            phrases = caption_phrases(scene["narration"])
+            if frames < len(phrases):
+                raise ValueError(f"Scene {scene_index} recorded audio is too short for its transcript")
+            equal, remainder = divmod(frames, len(phrases))
+            scene["parts"] = [{"text": phrase, "frames": equal + (index < remainder)}
+                              for index, phrase in enumerate(phrases)]
+            scene["recorded_wav"] = wav_path
+            scene["recorded_samples"] = samples
+            print(f"  Scene {scene_index}: {scene['heading']} (recorded audio, {samples / SAMPLE_RATE:.2f}s; approximate captions)", flush=True)
+            continue
         for phrase_index, phrase in enumerate(caption_phrases(scene["narration"]), start=1):
             stem = output_dir / "speech" / f"{scene_index:02}-{phrase_index:02}"
             text_path, aiff_path, wav_path = stem.with_suffix(".txt"), stem.with_suffix(".aiff"), stem.with_suffix(".wav")
@@ -292,7 +330,7 @@ def make_video(args: argparse.Namespace) -> dict:
     def frame(scene: dict, caption: str, index: int) -> str:
         relative = f"frames/frame-{len(jobs) + 1:04}.png"
         jobs.append({"image": str(scene["image"]), "output": str(output_dir / relative),
-                     "heading": scene["heading"], "caption": caption, "disclosure": DISCLOSURE,
+                     "heading": scene["heading"], "caption": caption, "disclosure": scene["disclosure"],
                      "index": f"{index:02} / {len(scenes):02}"})
         return relative
 
@@ -306,13 +344,20 @@ def make_video(args: argparse.Namespace) -> dict:
             holds.append((blank, LEAD_FRAMES))
             write_silence(audio_out, LEAD_FRAMES * SAMPLES_PER_FRAME)
             cursor += LEAD_FRAMES
+            if scene["audio_source"] is not None:
+                with wave.open(str(scene["recorded_wav"]), "rb") as source:
+                    audio_out.writeframesraw(source.readframes(source.getnframes()))
             for part in scene["parts"]:
                 holds.append((frame(scene, part["text"], index), part["frames"]))
                 cues.append({"text": part["text"], "start_frame": cursor, "end_frame": cursor + part["frames"]})
-                with wave.open(str(part["wav"]), "rb") as source:
-                    audio_out.writeframesraw(source.readframes(source.getnframes()))
-                write_silence(audio_out, part["frames"] * SAMPLES_PER_FRAME - part["samples"])
+                if scene["audio_source"] is None:
+                    with wave.open(str(part["wav"]), "rb") as source:
+                        audio_out.writeframesraw(source.readframes(source.getnframes()))
+                    write_silence(audio_out, part["frames"] * SAMPLES_PER_FRAME - part["samples"])
                 cursor += part["frames"]
+            if scene["audio_source"] is not None:
+                speech_frames = sum(part["frames"] for part in scene["parts"])
+                write_silence(audio_out, speech_frames * SAMPLES_PER_FRAME - scene["recorded_samples"])
             remaining = scene["duration_frames"] - (cursor - scene["start_frame"])
             holds.append((blank, remaining))
             write_silence(audio_out, remaining * SAMPLES_PER_FRAME)
@@ -340,7 +385,7 @@ def make_video(args: argparse.Namespace) -> dict:
          "-frames:v", str(target_frames), "-t", f"{target:.9f}",
          "-c:v", "libx264", "-preset", "fast", "-tune", "stillimage", "-crf", "18", "-pix_fmt", "yuv420p",
          "-c:a", "aac", "-b:a", "160k", "-c:s", "mov_text", "-disposition:s:0", "0",
-         "-metadata", f"title={title}", "-metadata", "comment=Edited screenshot highlights with separately synthesized macOS narration; not continuous real-time capture.",
+         "-metadata", f"title={title}", "-metadata", "comment=Edited screenshot highlights; audio provenance is labelled per scene and recorded in the receipt. Not continuous real-time capture.",
          "-metadata:s:s:0", "language=eng", "-movflags", "+faststart", str(movie)], cwd=output_dir, timeout=900)
     probe = json.loads(run([commands["ffprobe"], "-v", "error", "-show_format", "-show_streams", "-of", "json", str(movie)]))
     duration = float(probe["format"]["duration"])
@@ -352,18 +397,27 @@ def make_video(args: argparse.Namespace) -> dict:
         raise RuntimeError("Encoded dimensions or frame count did not match the declared export")
     receipt = {
         "created_at": datetime.now(timezone.utc).isoformat(), "title": title,
-        "disclosure": "Edited screenshot highlights with synthesized narration; not continuous real-time capture.",
+        "disclosure": "Edited screenshot highlights; audio provenance is labelled per scene. Not continuous real-time capture.",
         "manifest": str(manifest), "manifest_sha256": digest(manifest),
         "video": str(movie), "video_sha256": digest(movie), "duration_s": duration,
         "target_duration_s": target, "width": WIDTH, "height": HEIGHT, "fps": FPS, "frames": target_frames,
         "video_codec": video["codec_name"], "audio_codec": audio["codec_name"],
         "narration": str(narration), "narration_sha256": digest(narration),
-        "narration_engine": "macOS say", "voice": args.voice or "macOS system default", "speech_rate_wpm": args.rate,
+        "narration_engine": ("recorded Gemini Live" if all(scene["audio_source"] for scene in scenes)
+                             else "mixed per-scene sources" if any(scene["audio_source"] for scene in scenes) else "macOS say"),
+        "voice": args.voice or "macOS system default", "speech_rate_wpm": args.rate,
         "subtitles": str(subtitles), "subtitles_sha256": digest(subtitles), "subtitle_cues": len(cues),
-        "subtitle_timing": "Each caption uses its separately synthesized and measured speech segment; frame-aligned padding follows speech.",
+        "subtitle_timing": "Synthesized captions use measured phrase timing. Recorded-clip captions divide measured clip duration evenly; they are approximate, not word-aligned.",
         "facts_supplied_by_manifest": document.get("facts", {}),
         "scenes": [{"image": str(scene["image"]), "image_sha256": digest(scene["image"]), "heading": scene["heading"],
                     "narration": scene["narration"], "start_s": scene["start_frame"] / FPS,
+                    "audio_origin": "recorded Gemini Live" if scene["audio_source"] else "macOS say",
+                    "audio_source": str(scene["audio_source"]) if scene["audio_source"] else None,
+                    "audio_source_sha256": scene.get("audio_source_sha256"),
+                    "recorded_duration_s": scene["recorded_samples"] / SAMPLE_RATE if scene["audio_source"] else None,
+                    "normalized_audio_sha256": digest(scene["recorded_wav"]) if scene["audio_source"] else None,
+                    "disclosure": scene["disclosure"],
+                    "caption_timing": "evenly divided clip; approximate, not word-aligned" if scene["audio_source"] else "measured synthesized phrases",
                     "duration_s": scene["duration_frames"] / FPS, "requested_minimum_s": scene["requested_duration"]} for scene in scenes],
     }
     (output_dir / "receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")

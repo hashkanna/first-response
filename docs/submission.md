@@ -18,7 +18,8 @@ The prototype covers controlled faults. Its contribution is a complete, inspecta
 - Track: Open Innovation
 - Technologies: Google DeepMind, Modal, Pydantic
 - Side challenges: Best use of Modal; Best use of Pydantic
-- Repository: pending publication
-- Video: pending export
+- Repository: https://github.com/hashkanna/first-response
+- Video: https://github.com/hashkanna/first-response/releases/download/v1.0.0/first-response-demo.mp4
+- Video viewing page: https://github.com/hashkanna/first-response/releases/tag/v1.0.0
 
 The registered team in the organizer dashboard is currently Olympiad Commentator. This document does not rename that team or submit the project.

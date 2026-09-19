@@ -5,7 +5,8 @@ macOS example (uses existing in-memory server credentials; never reads a key):
 
 By default only status questions and explicit negation are sent. The separate
 --approve-verified mode authorizes applying the current verified toy-shop repair
-via synthetic speech. Audio comes from macOS say, not a person's microphone.
+via synthetic speech. --request-review verifies the current provider's conservative
+review fallback and requires the incident to remain unapproved. Audio comes from macOS say, not a person's microphone.
 Each provider session is capped at 60s.
 """
 from __future__ import annotations
@@ -26,6 +27,7 @@ from websockets.asyncio.client import connect
 
 SAMPLE_RATE = 16_000
 FRAME_BYTES = 640  # Same PCM16/20ms framing as the browser AudioWorklet.
+MIN_REVIEW_AUDIO_BYTES = 4_800  # 100 ms of mono 24 kHz PCM16 output.
 STATUS_QUESTION = "What is the status of checkout?"
 BARGE_QUESTION = "Stop. Do not change anything. Give me only one sentence about checkout."
 NEGATION_QUESTION = "Do not apply or approve any changes. Just tell me the current checkout status."
@@ -76,6 +78,7 @@ class Capture:
                         event["observed_at"] = utcnow()
                         event["phase"] = self.phase
                         event["elapsed_s"] = round(time.monotonic() - self.started, 3)
+                        event["audio_bytes_so_far"] = self.audio_bytes
                         self.events.append(event)
                         if event.get("type") == "ready":
                             self.model = event.get("model")
@@ -216,7 +219,7 @@ def approval_resolved(status: dict[str, Any], target: dict[str, str]) -> bool:
     return False
 
 
-async def approval_rehearsal(url: str, pcm: bytes, session_timeout: float, client: Any, status_url: str, target: dict[str, str]) -> dict[str, Any]:
+async def approval_rehearsal(url: str, pcm: bytes, session_timeout: float, client: Any, status_url: str, target: dict[str, str], *, request_review: bool = False) -> dict[str, Any]:
     capture = Capture()
     observations = []
 
@@ -236,17 +239,23 @@ async def approval_rehearsal(url: str, pcm: bytes, session_timeout: float, clien
                     await capture.wait_for(lambda: capture.model is not None, 20)
                     if approval_target(await current_status()) != target:
                         raise ValueError("Verified source changed before speaking; no approval audio sent.")
-                    capture.phase = "spoken_approval"
-                    print("Verified incident and source captured; sending synthetic approval command.", flush=True)
+                    capture.phase = "spoken_review_request" if request_review else "spoken_approval"
+                    print("Verified incident and source captured; sending synthetic affirmative command.", flush=True)
                     sender = asyncio.create_task(stream_pcm(socket, pcm))
-                    while not approval_resolved(await current_status(), target):
-                        if capture.failure:
-                            raise RuntimeError(capture.failure)
-                        await asyncio.sleep(0.25)
-                    await sender
-                    await capture.wait_for(lambda: capture.audio_bytes > 0
-                                           and any(event.get("type") == "tool_result" and event.get("name") == "approve_fix" and event.get("ok") is True for event in capture.events)
-                                           and any(event.get("type") == "input_transcription_state" and event.get("finished") is True for event in capture.events), 15)
+                    if request_review:
+                        await sender
+                        await capture.wait_for(lambda: all(review_audio_evidence({"events": capture.events, "native_output_pcm_bytes": capture.audio_bytes}, target).values()), 20)
+                        if approval_target(await current_status()) != target:
+                            raise ValueError("Review request changed the verified incident or recommendation.")
+                    else:
+                        while not approval_resolved(await current_status(), target):
+                            if capture.failure:
+                                raise RuntimeError(capture.failure)
+                            await asyncio.sleep(0.25)
+                        await sender
+                        await capture.wait_for(lambda: capture.audio_bytes > 0
+                                               and any(event.get("type") == "tool_result" and event.get("name") == "approve_fix" and event.get("ok") is True for event in capture.events)
+                                               and any(event.get("type") == "input_transcription_state" and event.get("finished") is True for event in capture.events), 15)
                     await socket.send(json.dumps({"type": "disconnect"}))
                 finally:
                     if sender:
@@ -258,13 +267,49 @@ async def approval_rehearsal(url: str, pcm: bytes, session_timeout: float, clien
     return {**capture.summary(), "status_observations": observations}
 
 
+def review_audio_evidence(session: dict[str, Any], target: dict[str, str]) -> dict[str, bool]:
+    baseline = None
+    assistant_started = False
+    completed = False
+    for event in session["events"]:
+        if event.get("type") == "review_requested" and event.get("incident_id") == target["incident_id"] and event.get("candidate_id") == target["candidate_id"]:
+            baseline = event.get("audio_bytes_so_far")
+            assistant_started = completed = False
+        elif baseline is not None:
+            if event.get("type") == "transcript" and event.get("role") == "assistant" and str(event.get("text", "")).strip():
+                assistant_started = True
+            elif event.get("type") == "interrupted":
+                assistant_started = False
+            elif event.get("type") == "turn_complete":
+                completed = completed or (assistant_started and event.get("audio_bytes_so_far", baseline) - baseline >= MIN_REVIEW_AUDIO_BYTES)
+                assistant_started = False
+    return {
+        "native_pcm_returned": baseline is not None and session["native_output_pcm_bytes"] - baseline >= MIN_REVIEW_AUDIO_BYTES,
+        "assistant_response_completed_after_review": completed,
+    }
+
+
+def review_checks(session: dict[str, Any], target: dict[str, str], before: dict[str, Any], after: dict[str, Any]) -> dict[str, bool]:
+    reviews = [event for event in session["events"] if event.get("type") == "review_requested"]
+    return {
+        "synthetic_affirmative_transcribed": any(item["role"] == "user" and item["text"].strip().rstrip(".").lower() == APPROVAL_COMMAND.rstrip(".").lower() for item in session["transcripts"]),
+        "review_bound_to_verified_target": bool(reviews) and all(bool(item.get("request_id")) and item.get("incident_id") == target["incident_id"] and item.get("candidate_id") == target["candidate_id"] for item in reviews),
+        **review_audio_evidence(session, target),
+        "approval_tool_did_not_apply": not any(item.get("type") == "tool_result" and item.get("name") == "approve_fix" and item.get("ok") is True for item in session["events"]),
+        "incident_and_approval_unchanged": status_fingerprint(before) == status_fingerprint(after) and after.get("stage") == "fix_verified" and after.get("approval") is None,
+        "session_errors_absent": not session["error"],
+    }
+
+
 async def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--hub", default="http://127.0.0.1:8001")
     parser.add_argument("--allow-live", action="store_true", help="Explicitly allow bounded real Gemini sessions using the relay's existing credential")
     parser.add_argument("--session-timeout", type=float, default=60)
     parser.add_argument("--prime-audio", action="store_true", help="Diagnostic: complete a typed turn before streaming audio; its output does not count as an audio-input success")
-    parser.add_argument("--approve-verified", action="store_true", help="Explicitly authorize synthetic spoken approval of the current verified toy-shop recommendation; requires a source snapshot and applies a real repair")
+    action = parser.add_mutually_exclusive_group()
+    action.add_argument("--approve-verified", action="store_true", help="Explicitly authorize synthetic spoken approval of the current verified toy-shop recommendation; requires a source snapshot and applies a real repair")
+    action.add_argument("--request-review", action="store_true", help="Verify current Gemini 3.8's conservative spoken-approval fallback: bound review request, native audio, and unchanged incident with no approval")
     args = parser.parse_args()
     target = urlsplit(args.hub)
     if target.scheme != "http" or target.hostname not in {"127.0.0.1", "localhost", "::1"} or target.username or target.password:
@@ -273,14 +318,17 @@ async def main() -> int:
         parser.error("Pass --allow-live to authorize bounded real provider calls.")
     if not 10 <= args.session_timeout <= 60:
         parser.error("Session timeout must be 10–60 seconds.")
-    if args.approve_verified and args.prime_audio:
-        parser.error("Approval mode does not send a typed primer.")
+    if (args.approve_verified or args.request_review) and args.prime_audio:
+        parser.error("Approval/review modes do not send a typed primer.")
     directory = Path(__file__).resolve().parents[1] / ".runtime" / "voice-checks" / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     directory.mkdir(parents=True, exist_ok=True)
     receipt: dict[str, Any] = {"started_at": utcnow(), "hub": args.hub, "uses_human_microphone": False, "uses_existing_server_credentials": True, "credentials_read_by_script": False, "session_timeout_s": args.session_timeout, "limitations": ["Synthetic speech verifies provider audio input, ASR, native output, and relay framing; it does not test a person's microphone, room acoustics, headset, or perceived speaker playback.", "No new credentials, server restart, fault injection, or approval command is performed."]}
     if args.approve_verified:
         receipt["mode"] = "explicit_spoken_approval"
         receipt["limitations"][1] = "Explicit approval mode applies the captured verified toy-shop repair. No credentials are read, server restarted or fault injected. Run without concurrent operator actions."
+    elif args.request_review:
+        receipt["mode"] = "spoken_review_request"
+        receipt["limitations"][1] = "This affirmative-speech check targets the current provider's conservative review fallback. It requires no approval or state change, sends no final UI/typed confirmation, and must run without concurrent operator actions."
     try:
         async with httpx.AsyncClient(timeout=5, trust_env=False) as client:
             before_response = await client.get(args.hub.rstrip("/") + "/status")
@@ -292,18 +340,18 @@ async def main() -> int:
             receipt["before"] = status_fingerprint(before)
             receipt["capabilities"] = {key: value for key, value in health.items() if key in {"gemini_live", "gemini_live_model", "investigator_model", "verification", "mode", "capabilities"}}
             url = args.hub.rstrip("/").replace("http://", "ws://", 1) + "/live"
-            if args.approve_verified:
+            if args.approve_verified or args.request_review:
                 target = approval_target(before)
                 receipt["approval_target"] = target
                 pcm, audio = await asyncio.to_thread(make_audio, APPROVAL_COMMAND, directory, "approval-input")
                 receipt["synthetic_inputs"] = [audio]
-                session = await approval_rehearsal(url, pcm, args.session_timeout, client, args.hub.rstrip("/") + "/status", target)
-                receipt["approval_session"] = session
+                session = await approval_rehearsal(url, pcm, args.session_timeout, client, args.hub.rstrip("/") + "/status", target, request_review=args.request_review)
+                receipt["review_session" if args.request_review else "approval_session"] = session
                 response = await client.get(args.hub.rstrip("/") + "/status")
                 response.raise_for_status()
                 after = response.json()
                 receipt["after"] = status_fingerprint(after)
-                receipt["checks"] = {
+                receipt["checks"] = review_checks(session, target, before, after) if args.request_review else {
                     "synthetic_approval_transcribed": any(item["role"] == "user" and item["text"].strip().rstrip(".").lower() == APPROVAL_COMMAND.rstrip(".").lower() for item in session["transcripts"]),
                     "provider_final_transcription_observed": any(item.get("type") == "input_transcription_state" and item.get("finished") is True for item in session["events"]),
                     "approve_tool_succeeded": any(item.get("type") == "tool_result" and item.get("name") == "approve_fix" and item.get("ok") is True for item in session["events"]),

@@ -5,9 +5,11 @@ Use only screenshots from the actual run. Replace every bracketed factual slot
 with a checked fact, or omit that sentence. The assembler rejects unresolved
 factual placeholders. It does not infer pass counts or timing from screenshots.
 
-The finished video always says EDITED HIGHLIGHTS / NARRATION: macOS SAY.
-Do not describe it as an uninterrupted capture, native Gemini conversation, or
-the original live audio. The speech here is separately synthesized narration.
+Synthesized scenes say EDITED HIGHLIGHTS / NARRATION: macOS SAY. An optional
+recorded-audio scene says ACTUAL GEMINI LIVE AUDIO / EDITED HIGHLIGHTS /
+APPROXIMATE CAPTIONS. Do not describe the assembled video as an uninterrupted
+capture or an entire native conversation. Only a supplied actual recording is
+the original live audio; other speech is separately synthesized narration.
 
 Suggested narrative, approximately two minutes after actual facts are inserted:
 
@@ -86,6 +88,26 @@ by the script. Image paths resolve relative to the manifest. Optional per-scene
 "duration" is a minimum hold in seconds and must fit its measured narration.
 Spare target time is distributed among the scenes as quiet screenshot holds.
 
+To include one actual Gemini Live response, add an existing local WAV and its
+exact checked transcript to the corresponding scene:
+
+{
+  "image": "06-live-status.png",
+  "heading": "The actual Gemini Live response",
+  "audio": "gemini-status.wav",
+  "narration": "The exact words heard in this actual recorded response."
+}
+
+The optional "audio" path resolves beside the manifest (or --captures-dir).
+This branch never calls macOS say. It normalizes the complete clip to 48 kHz
+mono PCM, preserves its measured duration without cutting or stretching, and
+records original and normalized file hashes. It cannot certify a recording's
+origin or check transcript accuracy; verify both before supplying the manifest.
+Captions split the transcript into readable phrases and divide clip time evenly.
+They are labelled approximate on screen and in the receipt, not word-aligned.
+The exact transcript remains in the SRT and receipt. Scene silence holds are
+added after the recorded clip as needed to reach the chosen export duration.
+
 Validate first:
   python3 scripts/make_demo_video.py --manifest .runtime/demo-captures/manifest.json --validate-only
 
@@ -100,8 +122,8 @@ is also allowed. No target above 120 seconds is accepted.
 
 Outputs in .runtime/demo-video:
   first-response-demo.mp4  — 1920x1080 H.264/AAC with burned captions and subtitle track
-  narration.wav           — frame-aligned local narration, including scene holds
-  subtitles.srt           — exact measured phrase timing with short frame-aligned padding
+  narration.wav           — complete mixed audio timeline, including scene holds
+  subtitles.srt           — measured synthetic phrase timing; approximate recorded-clip timing
   receipt.json            — source hashes, timings, narration, export details and facts supplied
   ffprobe.json            — independently probed stream details and duration
 

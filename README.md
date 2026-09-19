@@ -6,6 +6,8 @@ Talk to the room while the investigation runs. Gemini explains the observed fail
 
 Built for the Tech: Europe Agentic AI Hack, London, 19 September 2026.
 
+[Watch the two-minute demo](https://github.com/hashkanna/first-response/releases/tag/v1.0.0) · [Public source](https://github.com/hashkanna/first-response) · [Continuous integration](https://github.com/hashkanna/first-response/actions/workflows/ci.yml)
+
 ![Actual Gemini-generated candidate comparison and Modal test results](docs/media/repair-comparison.jpg)
 
 ## Observed in the live build
@@ -14,11 +16,11 @@ Gemini generated three timeout repairs from the broken source. Two passed all 25
 checks; the third passed the reproduction but failed a timeout-enforcement
 regression. The operator selected a passing patch, and fresh Modal recovery passed
 25 tests and 12 checkout probes. The UI measured 10.0 seconds to verified candidates
-in that run. [Inspect the actual diffs, provider receipt and test logs](docs/generated-run-evidence.md).
+in that run. [Inspect the actual diffs, provider receipt and test logs](docs/generated-run-evidence.md), or the [final integrated voice and approval check](docs/final-check.md).
 
 Real Gemini Live checks also passed speech transcription, native audio output,
 barge-in, explicit negation and reconnect, using synthesized PCM input through the
-actual relay. Human microphone/headset use is a separate rehearsal step.
+actual relay. Human microphone/headset use is a separate rehearsal step. The [two-minute demo](docs/demo-video.md) uses actual UI captures and includes actual Gemini Live recovery audio; edited highlights and synthesized narration are labeled.
 
 ## Run it
 
@@ -79,7 +81,9 @@ Authenticate Modal using its official CLI and warm the image:
 
 The existing active Modal profile is used; tokens are never copied into a sandbox. If already authenticated, skip `modal token new`. Use `WAR_ROOM_PORT=8001 ./scripts/dev.sh` here as well when port 8000 is occupied. Gemini can alternatively use Vertex Application Default Credentials; see [Live setup](live/README.md).
 
-In **Live system**, connect Gemini using **Connect Gemini Live**. The adjacent terminal button connects with typed input and spoken Gemini output, without requesting the microphone. Use a headset for the voice demo. Choose a fault in **Operator** and ask “What’s happening with checkout?” The agent receives investigation milestones while the conversation continues. Ask about the cause or attempted repairs, then approve the verified repair by voice, typed command, or the review button.
+In **Live system**, connect Gemini using **Connect Gemini Live**. The adjacent terminal button connects with typed input and spoken Gemini output, without requesting the microphone. Use a headset for the voice demo. Choose a fault in **Operator** and ask “What’s happening with checkout?” The agent receives investigation milestones while the conversation continues. Ask about the cause or attempted repairs, then approve the verified repair with a complete typed command or the review button.
+
+In the verified Gemini 3.8 path, a spoken apply request can open patch review because the observed stream omits transcription finality; typed or UI confirmation completes approval. The relay also supports finalized, incident-bound affirmative speech, but that direct approval path has not been observed in provider checks.
 
 A running development hub can also accept an existing API key in memory at **http://127.0.0.1:8000/setup** when started with `WAR_ROOM_ENABLE_SETUP=1`. That page is restricted to the loopback interface, requires same-origin CSRF validation, and never writes the key to disk. The key disappears when the server stops. Restarting requires reconfiguration.
 

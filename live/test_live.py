@@ -234,6 +234,7 @@ def test_empty_final_transcription_marker_is_exposed_and_arms_completed_speech()
         adapter, _, _ = make_adapter()
         socket, session = FakeSocket(), FakeSession()
         relay = LiveRelay(socket, session, adapter)
+        await relay._send_pcm_input(activity_start={})
         await session.messages.put(SimpleNamespace(server_content=SimpleNamespace(input_transcription=SimpleNamespace(text="Apply the verified fix.", finished=False))))
         await session.messages.put(SimpleNamespace(
             server_content=SimpleNamespace(input_transcription=SimpleNamespace(text=None, finished=True)),
@@ -249,6 +250,160 @@ def test_empty_final_transcription_marker_is_exposed_and_arms_completed_speech()
         adapter.approve_fix.assert_awaited_once_with("fix-1", "inc-1")
         markers = [item["finished"] for item in socket.sent if isinstance(item, dict) and item.get("type") == "input_transcription_state"]
         assert markers == [False, True]
+    asyncio.run(scenario())
+
+
+def test_incomplete_spoken_approval_requests_bound_review_without_applying():
+    async def scenario():
+        adapter, state, _ = make_adapter()
+        state["recommended_candidate_id"] = "fix-1"
+        socket, session = FakeSocket(), FakeSession()
+        relay = LiveRelay(socket, session, adapter)
+        await relay._send_pcm_input(activity_start={})
+        await session.messages.put(SimpleNamespace(server_content=SimpleNamespace(input_transcription=SimpleNamespace(text="Apply the verified fix.", finished=None)), tool_call=SimpleNamespace(function_calls=[SimpleNamespace(name="approve_fix", args={}, id="review")])) )
+        task = asyncio.create_task(relay.model_to_browser())
+        for _ in range(30):
+            if session.send_tool_response.await_count:
+                break
+            await asyncio.sleep(0)
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        adapter.approve_fix.assert_not_awaited()
+        reviews = [item for item in socket.sent if isinstance(item, dict) and item.get("type") == "review_requested"]
+        assert len(reviews) == 1
+        assert reviews[0]["incident_id"] == "inc-1"
+        assert reviews[0]["candidate_id"] == "fix-1"
+        assert reviews[0]["request_id"]
+        assert "Type exactly" in session.send_tool_response.await_args.kwargs["function_responses"][0]["response"]["error"]
+    asyncio.run(scenario())
+
+
+def test_new_pcm_activity_revokes_old_typed_grant_immediately():
+    async def scenario():
+        adapter, state, _ = make_adapter()
+        relay = LiveRelay(FakeSocket(), FakeSession(), adapter)
+        relay.approval.observe("Apply the verified fix", state)
+        await relay.audio_input.feed(b"\xdc\x05" * 640)
+        assert relay.audio_input.started_turns == 1
+        assert not relay.approval.consume("fix-1", state)
+    asyncio.run(scenario())
+
+
+def test_stale_speech_cannot_arm_new_incident_or_request_its_review():
+    async def scenario():
+        adapter, state, _ = make_adapter()
+        socket, session = FakeSocket(), FakeSession()
+        relay = LiveRelay(socket, session, adapter)
+        await relay._send_pcm_input(activity_start={})
+        relay.input_text = "Apply the verified fix."
+        relay.input_started = True
+        state["incident_id"] = "inc-2"
+        state["events"][0]["incident_id"] = "inc-2"
+        await session.messages.put(SimpleNamespace(server_content=SimpleNamespace(input_transcription=SimpleNamespace(text=None, finished=True)), tool_call=SimpleNamespace(function_calls=[SimpleNamespace(name="approve_fix", args={}, id="stale")])) )
+        task = asyncio.create_task(relay.model_to_browser())
+        for _ in range(30):
+            if session.send_tool_response.await_count:
+                break
+            await asyncio.sleep(0)
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        adapter.approve_fix.assert_not_awaited()
+        assert not any(isinstance(item, dict) and item.get("type") == "review_requested" for item in socket.sent)
+        relay._clear_speech()
+        assert relay.speech_status is None
+        assert relay.input_text == ""
+        assert not relay._speech_matches_current()
+    asyncio.run(scenario())
+
+
+def test_negative_prefix_survives_unordered_model_completion_before_final_suffix():
+    async def scenario():
+        adapter, _, _ = make_adapter()
+        socket, session = FakeSocket(), FakeSession()
+        relay = LiveRelay(socket, session, adapter)
+        await relay._send_pcm_input(activity_start={})
+        for content in (
+            SimpleNamespace(input_transcription=SimpleNamespace(text="Do not ", finished=False)),
+            SimpleNamespace(turn_complete=True),
+            SimpleNamespace(input_transcription=SimpleNamespace(text="apply the verified fix", finished=True)),
+        ):
+            await session.messages.put(SimpleNamespace(server_content=content))
+        await session.messages.put(SimpleNamespace(server_content=None, tool_call=SimpleNamespace(function_calls=[SimpleNamespace(name="approve_fix", args={}, id="negated")])) )
+        task = asyncio.create_task(relay.model_to_browser())
+        for _ in range(40):
+            if session.send_tool_response.await_count:
+                break
+            await asyncio.sleep(0)
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        assert relay.input_text == "Do not apply the verified fix"
+        adapter.approve_fix.assert_not_awaited()
+        assert not any(isinstance(item, dict) and item.get("type") == "review_requested" for item in socket.sent)
+    asyncio.run(scenario())
+
+
+def test_typed_approval_requires_browser_captured_matching_incident():
+    async def scenario(incident_id):
+        import json
+        adapter, state, _ = make_adapter()
+        socket, session = FakeSocket(), FakeSession()
+        relay = LiveRelay(socket, session, adapter)
+        await socket.incoming.put({"type": "websocket.receive", "text": json.dumps({"type": "text", "text": "Apply the verified fix", "incident_id": incident_id})})
+        await socket.incoming.put({"type": "websocket.disconnect"})
+        await relay.browser_to_model()
+        assert relay.approval.consume("fix-1", state) is (incident_id == "inc-1")
+        session.send_realtime_input.assert_awaited_once_with(text="Apply the verified fix")
+    for incident_id in (None, "retired", "inc-1"):
+        asyncio.run(scenario(incident_id))
+
+
+def test_reset_broadcast_clears_speech_and_does_not_rebind_late_final_transcript():
+    async def scenario():
+        adapter, state, queue = make_adapter()
+        socket, session = FakeSocket(), FakeSession()
+        relay = LiveRelay(socket, session, adapter)
+        await relay._send_pcm_input(activity_start={})
+        relay.input_text = "Apply the verified fix"
+        relay.input_started = True
+        await queue.put({"type": "reset"})
+        task = asyncio.create_task(relay.cues_to_model())
+        for _ in range(30):
+            if session.send_client_content.await_count:
+                break
+            await asyncio.sleep(0)
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        assert {"type": "reset"} in socket.sent
+        assert relay.speech_status is None and relay.input_text == ""
+        assert relay.speech_invalidated
+        assert not relay.approval.consume("fix-1", state)
+    asyncio.run(scenario())
+
+
+def test_missing_final_flag_and_model_turn_complete_never_approve_delayed_negation():
+    async def scenario():
+        adapter, _, _ = make_adapter()
+        socket, session = FakeSocket(), FakeSession()
+        relay = LiveRelay(socket, session, adapter)
+        messages = [
+            SimpleNamespace(server_content=SimpleNamespace(input_transcription=SimpleNamespace(text="Yes", finished=None))),
+            SimpleNamespace(tool_call=SimpleNamespace(function_calls=[SimpleNamespace(name="approve_fix", args={}, id="premature")]), server_content=None),
+            SimpleNamespace(server_content=SimpleNamespace(turn_complete=True)),
+            SimpleNamespace(server_content=SimpleNamespace(input_transcription=SimpleNamespace(text=", but do not apply it", finished=None))),
+            SimpleNamespace(tool_call=SimpleNamespace(function_calls=[SimpleNamespace(name="approve_fix", args={}, id="late")]), server_content=None),
+        ]
+        for message in messages:
+            await session.messages.put(message)
+        task = asyncio.create_task(relay.model_to_browser())
+        for _ in range(40):
+            if session.send_tool_response.await_count == 2:
+                break
+            await asyncio.sleep(0)
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        assert session.send_tool_response.await_count == 2
+        adapter.approve_fix.assert_not_awaited()
+        assert all("error" in call.kwargs["function_responses"][0]["response"] for call in session.send_tool_response.await_args_list)
     asyncio.run(scenario())
 
 

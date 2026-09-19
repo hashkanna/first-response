@@ -1,0 +1,423 @@
+{
+  "mode": "gemini-modal",
+  "verification_backend": "modal",
+  "investigator_backend": "gemini",
+  "repair_backend": "gemini",
+  "recommended_candidate_id": "gen-1-8f10a9db80",
+  "incident_id": "inc-14f63b6d27a3",
+  "stage": "resolved",
+  "active_fault": "bad_config",
+  "events": [
+    {
+      "incident_id": "inc-14f63b6d27a3",
+      "stage": "alerted",
+      "at": "2026-09-19T15:54:37.404484Z",
+      "message": "Checkout failed on 12 of 12 local probe requests (100%); alert threshold is 5%.",
+      "evidence": [
+        {
+          "evidence_id": "checkout-error-rate",
+          "kind": "metric",
+          "summary": "100% checkout error rate in 12 probe requests.",
+          "detail": "{\n  \"requests\": 12,\n  \"failed\": 12,\n  \"error_rate\": 1.0,\n  \"threshold\": 0.05\n}",
+          "source_ref": ".runtime/spans.jsonl"
+        }
+      ],
+      "root_cause": null,
+      "candidates": [],
+      "results": [],
+      "pr_url": null
+    },
+    {
+      "incident_id": "inc-14f63b6d27a3",
+      "stage": "investigating",
+      "at": "2026-09-19T15:54:37.406581Z",
+      "message": "Inspecting the actual failed checkouts and the runtime source change.",
+      "evidence": [],
+      "root_cause": null,
+      "candidates": [],
+      "results": [],
+      "pr_url": null
+    },
+    {
+      "incident_id": "inc-14f63b6d27a3",
+      "stage": "investigating",
+      "at": "2026-09-19T15:54:37.406934Z",
+      "message": "Pydantic AI is asking Gemini to analyze the actual exception, deploy diff, and runtime source.",
+      "evidence": [
+        {
+          "evidence_id": "trace-checkout",
+          "kind": "exception",
+          "summary": "PaymentTimeout: Payment provider needs 80 ms; timeout is 3 ms",
+          "detail": "Traceback (most recent call last):\n  File \"<workspace>/.runtime/shop/probe.py\", line 18, in probe\n    receipt = checkout(cart)\n              ^^^^^^^^^^^^^^\n  File \"<workspace>/.runtime/shop/app/checkout.py\", line 11, in checkout\n    payment = charge(subtotal - discount)\n              ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<workspace>/.runtime/shop/app/payments.py\", line 16, in charge\n    raise PaymentTimeout(\nshop.app.payments.PaymentTimeout: Payment provider needs 80 ms; timeout is 3 ms\n",
+          "source_ref": ".runtime/spans.jsonl"
+        },
+        {
+          "evidence_id": "deploy-change",
+          "kind": "deploy_diff",
+          "summary": "The injected fault changed shop/app/config.py.",
+          "detail": "--- a/app/config.py\n+++ b/app/config.py\n@@ -1,3 +1,3 @@\n \"\"\"Timeout is expressed in milliseconds; the fake provider takes 80 ms.\"\"\"\n \n-PAYMENT_TIMEOUT_MS = 3000\n+PAYMENT_TIMEOUT_MS = 3\n",
+          "source_ref": "shop/app/config.py"
+        },
+        {
+          "evidence_id": "source-location",
+          "kind": "code",
+          "summary": "The failing runtime source matches the authored bad_config fault.",
+          "detail": "  1  \"\"\"Timeout is expressed in milliseconds; the fake provider takes 80 ms.\"\"\"\n  2  \n  3  PAYMENT_TIMEOUT_MS = 3",
+          "source_ref": "shop/app/config.py:3"
+        }
+      ],
+      "root_cause": null,
+      "candidates": [],
+      "results": [],
+      "pr_url": null
+    },
+    {
+      "incident_id": "inc-14f63b6d27a3",
+      "stage": "cause_found",
+      "at": "2026-09-19T15:54:40.707662Z",
+      "message": "The payment timeout configuration was reduced to 3 ms, which is less than the provider latency of 80 ms. This causes payments.charge to raise a PaymentTimeout exception during checkout.",
+      "evidence": [
+        {
+          "evidence_id": "trace-checkout",
+          "kind": "exception",
+          "summary": "PaymentTimeout: Payment provider needs 80 ms; timeout is 3 ms",
+          "detail": "Traceback (most recent call last):\n  File \"<workspace>/.runtime/shop/probe.py\", line 18, in probe\n    receipt = checkout(cart)\n              ^^^^^^^^^^^^^^\n  File \"<workspace>/.runtime/shop/app/checkout.py\", line 11, in checkout\n    payment = charge(subtotal - discount)\n              ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<workspace>/.runtime/shop/app/payments.py\", line 16, in charge\n    raise PaymentTimeout(\nshop.app.payments.PaymentTimeout: Payment provider needs 80 ms; timeout is 3 ms\n",
+          "source_ref": ".runtime/spans.jsonl"
+        },
+        {
+          "evidence_id": "deploy-change",
+          "kind": "deploy_diff",
+          "summary": "The injected fault changed shop/app/config.py.",
+          "detail": "--- a/app/config.py\n+++ b/app/config.py\n@@ -1,3 +1,3 @@\n \"\"\"Timeout is expressed in milliseconds; the fake provider takes 80 ms.\"\"\"\n \n-PAYMENT_TIMEOUT_MS = 3000\n+PAYMENT_TIMEOUT_MS = 3\n",
+          "source_ref": "shop/app/config.py"
+        },
+        {
+          "evidence_id": "source-location",
+          "kind": "code",
+          "summary": "The failing runtime source matches the authored bad_config fault.",
+          "detail": "  1  \"\"\"Timeout is expressed in milliseconds; the fake provider takes 80 ms.\"\"\"\n  2  \n  3  PAYMENT_TIMEOUT_MS = 3",
+          "source_ref": "shop/app/config.py:3"
+        }
+      ],
+      "root_cause": {
+        "service": "payments",
+        "file": "shop/app/config.py",
+        "line": 3,
+        "commit": null,
+        "explanation": "The payment timeout configuration was reduced to 3 ms, which is less than the provider latency of 80 ms. This causes payments.charge to raise a PaymentTimeout exception during checkout.",
+        "evidence_ids": [
+          "trace-checkout",
+          "deploy-change"
+        ],
+        "confidence": 1.0
+      },
+      "candidates": [],
+      "results": [],
+      "pr_url": null
+    },
+    {
+      "incident_id": "inc-14f63b6d27a3",
+      "stage": "reproduced",
+      "at": "2026-09-19T15:54:43.310803Z",
+      "message": "The reproduction fails on the broken runtime copy. Testing candidate fixes next.",
+      "evidence": [
+        {
+          "evidence_id": "repro-log",
+          "kind": "trace",
+          "summary": "The reproduction produced one failing test on the broken code.",
+          "detail": "MODAL SANDBOX sb-7llAqQnci5MwtpkPbIup1W\nBROKEN SNAPSHOT sha256:f7b1c6b141c8287ef2837bc8cc183c66675f9306c8d52deeab002a43004a1116\nF                                                                        [100%]\n=================================== FAILURES ===================================\n__________________________ test_repro_payment_timeout __________________________\ntests/test_repro_bad_config.py:7: in test_repro_payment_timeout\n    assert checkout(cart)[\"payment\"][\"status\"] == \"paid\"\n           ^^^^^^^^^^^^^^\nshop/app/checkout.py:11: in checkout\n    payment = charge(subtotal - discount)\n              ^^^^^^^^^^^^^^^^^^^^^^^^^^^\nshop/app/payments.py:16: in charge\n    raise PaymentTimeout(\nE   shop.app.payments.PaymentTimeout: Payment provider needs 80 ms; timeout is 3 ms\n=========================== short test summary info ============================\nFAILED tests/test_repro_bad_config.py::test_repro_payment_timeout - shop.app....\n1 failed in 0.03s\n",
+          "source_ref": "tests/test_repro_bad_config.py"
+        }
+      ],
+      "root_cause": null,
+      "candidates": [],
+      "results": [],
+      "pr_url": null
+    },
+    {
+      "incident_id": "inc-14f63b6d27a3",
+      "stage": "reproduced",
+      "at": "2026-09-19T15:54:43.310841Z",
+      "message": "The reproduction fails. Gemini is deriving three repair edits from the broken source and observed evidence.",
+      "evidence": [],
+      "root_cause": null,
+      "candidates": [],
+      "results": [],
+      "pr_url": null
+    },
+    {
+      "incident_id": "inc-14f63b6d27a3",
+      "stage": "fixes_proposed",
+      "at": "2026-09-19T15:54:44.785909Z",
+      "message": "Gemini generated three distinct bounded repair patches. None has been executed on the host or declared correct.",
+      "evidence": [],
+      "root_cause": null,
+      "candidates": [
+        {
+          "candidate_id": "gen-1-8f10a9db80",
+          "title": "Restore standard payment timeout of 3000ms",
+          "rationale": "Restores the original 3000 ms timeout setting from before the bad deploy, which is comfortably above the 80 ms provider latency.",
+          "patch": "--- a/app/config.py\n+++ b/app/config.py\n@@ -1,3 +1,3 @@\n \"\"\"Timeout is expressed in milliseconds; the fake provider takes 80 ms.\"\"\"\n \n-PAYMENT_TIMEOUT_MS = 3\n+PAYMENT_TIMEOUT_MS = 3000\n",
+          "files_touched": [
+            "shop/app/config.py"
+          ],
+          "origin": "gemini",
+          "snapshot_sha": "bb17a12d28e10016d38afb75b874bdd67c05e81eff2dd61a09c67b423f1953b4"
+        },
+        {
+          "candidate_id": "gen-2-acbd8d6b7b",
+          "title": "Set payment timeout to 1000ms",
+          "rationale": "Sets the payment timeout to 1000 ms (1 second), exceeding the 80 ms provider latency and avoiding the PaymentTimeout exception.",
+          "patch": "--- a/app/config.py\n+++ b/app/config.py\n@@ -1,3 +1,3 @@\n \"\"\"Timeout is expressed in milliseconds; the fake provider takes 80 ms.\"\"\"\n \n-PAYMENT_TIMEOUT_MS = 3\n+PAYMENT_TIMEOUT_MS = 1000\n",
+          "files_touched": [
+            "shop/app/config.py"
+          ],
+          "origin": "gemini",
+          "snapshot_sha": "bb17a12d28e10016d38afb75b874bdd67c05e81eff2dd61a09c67b423f1953b4"
+        },
+        {
+          "candidate_id": "gen-3-af4a2c39c2",
+          "title": "Set payment timeout to 5000ms",
+          "rationale": "Sets the payment timeout to 5000 ms (5 seconds), safely accommodating the 80 ms provider latency.",
+          "patch": "--- a/app/config.py\n+++ b/app/config.py\n@@ -1,3 +1,3 @@\n \"\"\"Timeout is expressed in milliseconds; the fake provider takes 80 ms.\"\"\"\n \n-PAYMENT_TIMEOUT_MS = 3\n+PAYMENT_TIMEOUT_MS = 5000\n",
+          "files_touched": [
+            "shop/app/config.py"
+          ],
+          "origin": "gemini",
+          "snapshot_sha": "bb17a12d28e10016d38afb75b874bdd67c05e81eff2dd61a09c67b423f1953b4"
+        }
+      ],
+      "results": [],
+      "pr_url": null
+    },
+    {
+      "incident_id": "inc-14f63b6d27a3",
+      "stage": "verifying",
+      "at": "2026-09-19T15:54:44.785948Z",
+      "message": "Running all three candidates in network-disabled Modal sandboxes: reproduction plus regression suite.",
+      "evidence": [],
+      "root_cause": null,
+      "candidates": [
+        {
+          "candidate_id": "gen-1-8f10a9db80",
+          "title": "Restore standard payment timeout of 3000ms",
+          "rationale": "Restores the original 3000 ms timeout setting from before the bad deploy, which is comfortably above the 80 ms provider latency.",
+          "patch": "--- a/app/config.py\n+++ b/app/config.py\n@@ -1,3 +1,3 @@\n \"\"\"Timeout is expressed in milliseconds; the fake provider takes 80 ms.\"\"\"\n \n-PAYMENT_TIMEOUT_MS = 3\n+PAYMENT_TIMEOUT_MS = 3000\n",
+          "files_touched": [
+            "shop/app/config.py"
+          ],
+          "origin": "gemini",
+          "snapshot_sha": "bb17a12d28e10016d38afb75b874bdd67c05e81eff2dd61a09c67b423f1953b4"
+        },
+        {
+          "candidate_id": "gen-2-acbd8d6b7b",
+          "title": "Set payment timeout to 1000ms",
+          "rationale": "Sets the payment timeout to 1000 ms (1 second), exceeding the 80 ms provider latency and avoiding the PaymentTimeout exception.",
+          "patch": "--- a/app/config.py\n+++ b/app/config.py\n@@ -1,3 +1,3 @@\n \"\"\"Timeout is expressed in milliseconds; the fake provider takes 80 ms.\"\"\"\n \n-PAYMENT_TIMEOUT_MS = 3\n+PAYMENT_TIMEOUT_MS = 1000\n",
+          "files_touched": [
+            "shop/app/config.py"
+          ],
+          "origin": "gemini",
+          "snapshot_sha": "bb17a12d28e10016d38afb75b874bdd67c05e81eff2dd61a09c67b423f1953b4"
+        },
+        {
+          "candidate_id": "gen-3-af4a2c39c2",
+          "title": "Set payment timeout to 5000ms",
+          "rationale": "Sets the payment timeout to 5000 ms (5 seconds), safely accommodating the 80 ms provider latency.",
+          "patch": "--- a/app/config.py\n+++ b/app/config.py\n@@ -1,3 +1,3 @@\n \"\"\"Timeout is expressed in milliseconds; the fake provider takes 80 ms.\"\"\"\n \n-PAYMENT_TIMEOUT_MS = 3\n+PAYMENT_TIMEOUT_MS = 5000\n",
+          "files_touched": [
+            "shop/app/config.py"
+          ],
+          "origin": "gemini",
+          "snapshot_sha": "bb17a12d28e10016d38afb75b874bdd67c05e81eff2dd61a09c67b423f1953b4"
+        }
+      ],
+      "results": [],
+      "pr_url": null
+    },
+    {
+      "incident_id": "inc-14f63b6d27a3",
+      "stage": "verifying",
+      "at": "2026-09-19T15:54:46.983076Z",
+      "message": "gen-3-af4a2c39c2 failed verification: 25 tests executed, 1 failed.",
+      "evidence": [],
+      "root_cause": null,
+      "candidates": [],
+      "results": [
+        {
+          "candidate_id": "gen-3-af4a2c39c2",
+          "applied": true,
+          "repro_passed": true,
+          "suite_passed": false,
+          "tests_run": 25,
+          "tests_failed": 1,
+          "duration_s": 2.049,
+          "log_tail": "MODAL GENERATED VERIFICATION sb-ofNmQGnV0uBuxrJX5uXNLW\nBROKEN SNAPSHOT sha256:bb17a12d28e10016d38afb75b874bdd67c05e81eff2dd61a09c67b423f1953b4\nREPRODUCTION\n.                                                                        [100%]\n1 passed in 0.01s\n\nREGRESSION SUITE\n....................F...                                                 [100%]\n=================================== FAILURES ===================================\n____________________ test_provider_timeout_remains_enforced ____________________\nshop/tests/test_shop.py:103: in test_provider_timeout_remains_enforced\n    with pytest.raises(PaymentTimeout):\n         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nE   Failed: DID NOT RAISE <class 'shop.app.payments.PaymentTimeout'>\n=========================== short test summary info ============================\nFAILED shop/tests/test_shop.py::test_provider_timeout_remains_enforced - Fail...\n1 failed, 23 passed in 0.04s\n"
+        }
+      ],
+      "pr_url": null
+    },
+    {
+      "incident_id": "inc-14f63b6d27a3",
+      "stage": "verifying",
+      "at": "2026-09-19T15:54:47.106604Z",
+      "message": "gen-2-acbd8d6b7b passed: 25 tests executed, 0 failed.",
+      "evidence": [],
+      "root_cause": null,
+      "candidates": [],
+      "results": [
+        {
+          "candidate_id": "gen-2-acbd8d6b7b",
+          "applied": true,
+          "repro_passed": true,
+          "suite_passed": true,
+          "tests_run": 25,
+          "tests_failed": 0,
+          "duration_s": 2.194,
+          "log_tail": "MODAL GENERATED VERIFICATION sb-5h9VX0apAFZ8gwFMQkEBJh\nBROKEN SNAPSHOT sha256:bb17a12d28e10016d38afb75b874bdd67c05e81eff2dd61a09c67b423f1953b4\nREPRODUCTION\n.                                                                        [100%]\n1 passed in 0.01s\n\nREGRESSION SUITE\n........................                                                 [100%]\n24 passed in 0.04s\n"
+        }
+      ],
+      "pr_url": null
+    },
+    {
+      "incident_id": "inc-14f63b6d27a3",
+      "stage": "verifying",
+      "at": "2026-09-19T15:54:48.030899Z",
+      "message": "gen-1-8f10a9db80 passed: 25 tests executed, 0 failed.",
+      "evidence": [],
+      "root_cause": null,
+      "candidates": [],
+      "results": [
+        {
+          "candidate_id": "gen-1-8f10a9db80",
+          "applied": true,
+          "repro_passed": true,
+          "suite_passed": true,
+          "tests_run": 25,
+          "tests_failed": 0,
+          "duration_s": 3.066,
+          "log_tail": "MODAL GENERATED VERIFICATION sb-T12j9eWo6EIOgwhdpYiWnF\nBROKEN SNAPSHOT sha256:bb17a12d28e10016d38afb75b874bdd67c05e81eff2dd61a09c67b423f1953b4\nREPRODUCTION\n.                                                                        [100%]\n1 passed in 0.01s\n\nREGRESSION SUITE\n........................                                                 [100%]\n24 passed in 0.07s\n"
+        }
+      ],
+      "pr_url": null
+    },
+    {
+      "incident_id": "inc-14f63b6d27a3",
+      "stage": "fix_verified",
+      "at": "2026-09-19T15:54:48.031137Z",
+      "message": "3 candidates tested. 2 passed all 25 tests, including the reproduction and regression suite. Approval is required before applying gen-1-8f10a9db80 to the toy shop.",
+      "evidence": [],
+      "root_cause": null,
+      "candidates": [
+        {
+          "candidate_id": "gen-1-8f10a9db80",
+          "title": "Restore standard payment timeout of 3000ms",
+          "rationale": "Restores the original 3000 ms timeout setting from before the bad deploy, which is comfortably above the 80 ms provider latency.",
+          "patch": "--- a/app/config.py\n+++ b/app/config.py\n@@ -1,3 +1,3 @@\n \"\"\"Timeout is expressed in milliseconds; the fake provider takes 80 ms.\"\"\"\n \n-PAYMENT_TIMEOUT_MS = 3\n+PAYMENT_TIMEOUT_MS = 3000\n",
+          "files_touched": [
+            "shop/app/config.py"
+          ],
+          "origin": "gemini",
+          "snapshot_sha": "bb17a12d28e10016d38afb75b874bdd67c05e81eff2dd61a09c67b423f1953b4"
+        },
+        {
+          "candidate_id": "gen-2-acbd8d6b7b",
+          "title": "Set payment timeout to 1000ms",
+          "rationale": "Sets the payment timeout to 1000 ms (1 second), exceeding the 80 ms provider latency and avoiding the PaymentTimeout exception.",
+          "patch": "--- a/app/config.py\n+++ b/app/config.py\n@@ -1,3 +1,3 @@\n \"\"\"Timeout is expressed in milliseconds; the fake provider takes 80 ms.\"\"\"\n \n-PAYMENT_TIMEOUT_MS = 3\n+PAYMENT_TIMEOUT_MS = 1000\n",
+          "files_touched": [
+            "shop/app/config.py"
+          ],
+          "origin": "gemini",
+          "snapshot_sha": "bb17a12d28e10016d38afb75b874bdd67c05e81eff2dd61a09c67b423f1953b4"
+        },
+        {
+          "candidate_id": "gen-3-af4a2c39c2",
+          "title": "Set payment timeout to 5000ms",
+          "rationale": "Sets the payment timeout to 5000 ms (5 seconds), safely accommodating the 80 ms provider latency.",
+          "patch": "--- a/app/config.py\n+++ b/app/config.py\n@@ -1,3 +1,3 @@\n \"\"\"Timeout is expressed in milliseconds; the fake provider takes 80 ms.\"\"\"\n \n-PAYMENT_TIMEOUT_MS = 3\n+PAYMENT_TIMEOUT_MS = 5000\n",
+          "files_touched": [
+            "shop/app/config.py"
+          ],
+          "origin": "gemini",
+          "snapshot_sha": "bb17a12d28e10016d38afb75b874bdd67c05e81eff2dd61a09c67b423f1953b4"
+        }
+      ],
+      "results": [
+        {
+          "candidate_id": "gen-3-af4a2c39c2",
+          "applied": true,
+          "repro_passed": true,
+          "suite_passed": false,
+          "tests_run": 25,
+          "tests_failed": 1,
+          "duration_s": 2.049,
+          "log_tail": "MODAL GENERATED VERIFICATION sb-ofNmQGnV0uBuxrJX5uXNLW\nBROKEN SNAPSHOT sha256:bb17a12d28e10016d38afb75b874bdd67c05e81eff2dd61a09c67b423f1953b4\nREPRODUCTION\n.                                                                        [100%]\n1 passed in 0.01s\n\nREGRESSION SUITE\n....................F...                                                 [100%]\n=================================== FAILURES ===================================\n____________________ test_provider_timeout_remains_enforced ____________________\nshop/tests/test_shop.py:103: in test_provider_timeout_remains_enforced\n    with pytest.raises(PaymentTimeout):\n         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nE   Failed: DID NOT RAISE <class 'shop.app.payments.PaymentTimeout'>\n=========================== short test summary info ============================\nFAILED shop/tests/test_shop.py::test_provider_timeout_remains_enforced - Fail...\n1 failed, 23 passed in 0.04s\n"
+        },
+        {
+          "candidate_id": "gen-2-acbd8d6b7b",
+          "applied": true,
+          "repro_passed": true,
+          "suite_passed": true,
+          "tests_run": 25,
+          "tests_failed": 0,
+          "duration_s": 2.194,
+          "log_tail": "MODAL GENERATED VERIFICATION sb-5h9VX0apAFZ8gwFMQkEBJh\nBROKEN SNAPSHOT sha256:bb17a12d28e10016d38afb75b874bdd67c05e81eff2dd61a09c67b423f1953b4\nREPRODUCTION\n.                                                                        [100%]\n1 passed in 0.01s\n\nREGRESSION SUITE\n........................                                                 [100%]\n24 passed in 0.04s\n"
+        },
+        {
+          "candidate_id": "gen-1-8f10a9db80",
+          "applied": true,
+          "repro_passed": true,
+          "suite_passed": true,
+          "tests_run": 25,
+          "tests_failed": 0,
+          "duration_s": 3.066,
+          "log_tail": "MODAL GENERATED VERIFICATION sb-T12j9eWo6EIOgwhdpYiWnF\nBROKEN SNAPSHOT sha256:bb17a12d28e10016d38afb75b874bdd67c05e81eff2dd61a09c67b423f1953b4\nREPRODUCTION\n.                                                                        [100%]\n1 passed in 0.01s\n\nREGRESSION SUITE\n........................                                                 [100%]\n24 passed in 0.07s\n"
+        }
+      ],
+      "pr_url": null
+    },
+    {
+      "incident_id": "inc-14f63b6d27a3",
+      "stage": "resolved",
+      "at": "2026-09-19T15:56:37.987566Z",
+      "message": "Approved patch saved to the runtime toy shop. Modal recovery passed 25 tests and all 12 checkout probes. Download the verified patch at /artifacts/inc-14f63b6d27a3-gen-1-8f10a9db80.patch.",
+      "evidence": [],
+      "root_cause": null,
+      "candidates": [
+        {
+          "candidate_id": "gen-1-8f10a9db80",
+          "title": "Restore standard payment timeout of 3000ms",
+          "rationale": "Restores the original 3000 ms timeout setting from before the bad deploy, which is comfortably above the 80 ms provider latency.",
+          "patch": "--- a/app/config.py\n+++ b/app/config.py\n@@ -1,3 +1,3 @@\n \"\"\"Timeout is expressed in milliseconds; the fake provider takes 80 ms.\"\"\"\n \n-PAYMENT_TIMEOUT_MS = 3\n+PAYMENT_TIMEOUT_MS = 3000\n",
+          "files_touched": [
+            "shop/app/config.py"
+          ],
+          "origin": "gemini",
+          "snapshot_sha": "bb17a12d28e10016d38afb75b874bdd67c05e81eff2dd61a09c67b423f1953b4"
+        }
+      ],
+      "results": [
+        {
+          "candidate_id": "gen-1-8f10a9db80",
+          "applied": true,
+          "repro_passed": true,
+          "suite_passed": true,
+          "tests_run": 25,
+          "tests_failed": 0,
+          "duration_s": 2.66,
+          "log_tail": "MODAL GENERATED VERIFICATION sb-K8uQc1ym5mxLzcKrOWdAD7\nBROKEN SNAPSHOT sha256:bb17a12d28e10016d38afb75b874bdd67c05e81eff2dd61a09c67b423f1953b4\nREPRODUCTION\n.                                                                        [100%]\n1 passed in 0.01s\n\nREGRESSION SUITE\n........................                                                 [100%]\n24 passed in 0.04s\n\nREMOTE CHECKOUT PROBE\n12 requests; 0 failed.\n"
+        }
+      ],
+      "pr_url": null
+    }
+  ],
+  "approval": {
+    "incident_id": "inc-14f63b6d27a3",
+    "candidate_id": "gen-1-8f10a9db80",
+    "approved": true,
+    "artifact_url": "/artifacts/inc-14f63b6d27a3-gen-1-8f10a9db80.patch",
+    "origin": "gemini",
+    "snapshot_sha": "bb17a12d28e10016d38afb75b874bdd67c05e81eff2dd61a09c67b423f1953b4"
+  }
+}

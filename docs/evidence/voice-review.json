@@ -1,0 +1,185 @@
+{
+  "started_at": "2026-09-19T15:55:36.156375+00:00",
+  "hub": "http://127.0.0.1:8001",
+  "uses_human_microphone": false,
+  "uses_existing_server_credentials": true,
+  "credentials_read_by_script": false,
+  "session_timeout_s": 60,
+  "limitations": [
+    "Synthetic speech verifies provider audio input, ASR, native output, and relay framing; it does not test a person's microphone, room acoustics, headset, or perceived speaker playback.",
+    "This affirmative-speech check targets the current provider's conservative review fallback. It requires no approval or state change, sends no final UI/typed confirmation, and must run without concurrent operator actions."
+  ],
+  "mode": "spoken_review_request",
+  "before": {
+    "incident_id": "inc-14f63b6d27a3",
+    "stage": "fix_verified",
+    "active_fault": "bad_config",
+    "approval": null
+  },
+  "capabilities": {
+    "mode": "gemini-modal",
+    "verification": "modal",
+    "gemini_live": true,
+    "gemini_live_model": "gemini-3.8-live",
+    "investigator_model": "gemini-3.8-flash"
+  },
+  "approval_target": {
+    "incident_id": "inc-14f63b6d27a3",
+    "candidate_id": "gen-1-8f10a9db80",
+    "snapshot_sha": "bb17a12d28e10016d38afb75b874bdd67c05e81eff2dd61a09c67b423f1953b4"
+  },
+  "synthetic_inputs": [
+    {
+      "text": "Apply the verified fix.",
+      "source": "macOS say (synthetic; no human microphone)",
+      "sample_rate": 16000,
+      "channels": 1,
+      "format": "PCM16 little-endian",
+      "pcm_bytes": 57690,
+      "duration_s": 1.803,
+      "sha256": "be2cd09f8193eddae94933c2a60c9b2417d553873ee4e63c58f96134abc3c789"
+    }
+  ],
+  "review_session": {
+    "model": "gemini-3.8-live",
+    "elapsed_s": 3.837,
+    "native_output_pcm_bytes": 2,
+    "speech_reply_audio_bytes": 0,
+    "typed_negation_completed": false,
+    "native_output_chunks": 1,
+    "output_sample_rate": 24000,
+    "turn_completions": 1,
+    "interruption_events": 0,
+    "transcripts": [
+      {
+        "id": "input-0",
+        "role": "user",
+        "text": "Apply the verified fix.",
+        "at": "2026-09-19T15:55:39.933907+00:00",
+        "phase": "spoken_review_request"
+      },
+      {
+        "id": "output-1",
+        "role": "assistant",
+        "text": "To finalize ",
+        "at": "2026-09-19T15:55:41.052618+00:00",
+        "phase": "spoken_review_request"
+      }
+    ],
+    "events": [
+      {
+        "type": "ready",
+        "model": "gemini-3.8-live",
+        "input_sample_rate": 16000,
+        "output_sample_rate": 24000,
+        "audio_input_mode": "server_vad",
+        "observed_at": "2026-09-19T15:55:37.612401+00:00",
+        "phase": "connecting",
+        "elapsed_s": 0.39
+      },
+      {
+        "type": "input_transcription_state",
+        "id": "input-0",
+        "finished": null,
+        "at": "2026-09-19T15:55:39.933821+00:00",
+        "observed_at": "2026-09-19T15:55:39.934157+00:00",
+        "phase": "spoken_review_request",
+        "elapsed_s": 2.712
+      },
+      {
+        "type": "transcript",
+        "id": "input-0",
+        "role": "user",
+        "text": "Apply the verified fix.",
+        "at": "2026-09-19T15:55:39.933907+00:00",
+        "delta": true,
+        "observed_at": "2026-09-19T15:55:39.934181+00:00",
+        "phase": "spoken_review_request",
+        "elapsed_s": 2.712
+      },
+      {
+        "type": "audio_input",
+        "mode": "server_vad",
+        "received_bytes": 76890,
+        "forwarded_bytes": 69760,
+        "started_turns": 1,
+        "ended_turns": 1,
+        "peak_pcm16": 25802,
+        "observed_at": "2026-09-19T15:55:40.038036+00:00",
+        "phase": "spoken_review_request",
+        "elapsed_s": 2.816
+      },
+      {
+        "type": "review_requested",
+        "request_id": "c1190ab4-30f6-463a-8313-f871b19a65c8",
+        "incident_id": "inc-14f63b6d27a3",
+        "candidate_id": "gen-1-8f10a9db80",
+        "observed_at": "2026-09-19T15:55:40.361643+00:00",
+        "phase": "spoken_review_request",
+        "elapsed_s": 3.14
+      },
+      {
+        "type": "tool_result",
+        "name": "approve_fix",
+        "ok": false,
+        "observed_at": "2026-09-19T15:55:40.361758+00:00",
+        "phase": "spoken_review_request",
+        "elapsed_s": 3.14
+      },
+      {
+        "type": "turn_complete",
+        "observed_at": "2026-09-19T15:55:40.363491+00:00",
+        "phase": "spoken_review_request",
+        "elapsed_s": 3.141
+      },
+      {
+        "type": "transcript",
+        "id": "output-1",
+        "role": "assistant",
+        "text": "To finalize ",
+        "at": "2026-09-19T15:55:41.052618+00:00",
+        "delta": true,
+        "observed_at": "2026-09-19T15:55:41.053898+00:00",
+        "phase": "spoken_review_request",
+        "elapsed_s": 3.832
+      },
+      {
+        "type": "first_audio",
+        "phase": "spoken_review_request",
+        "elapsed_s": 3.832
+      }
+    ],
+    "error": null,
+    "status_observations": [
+      {
+        "observed_at": "2026-09-19T15:55:37.616058+00:00",
+        "incident_id": "inc-14f63b6d27a3",
+        "stage": "fix_verified",
+        "active_fault": "bad_config",
+        "approval": null
+      },
+      {
+        "observed_at": "2026-09-19T15:55:41.057831+00:00",
+        "incident_id": "inc-14f63b6d27a3",
+        "stage": "fix_verified",
+        "active_fault": "bad_config",
+        "approval": null
+      }
+    ]
+  },
+  "after": {
+    "incident_id": "inc-14f63b6d27a3",
+    "stage": "fix_verified",
+    "active_fault": "bad_config",
+    "approval": null
+  },
+  "checks": {
+    "synthetic_affirmative_transcribed": true,
+    "review_bound_to_verified_target": true,
+    "native_pcm_returned": true,
+    "approval_tool_did_not_apply": true,
+    "incident_and_approval_unchanged": true,
+    "session_errors_absent": true
+  },
+  "finished_at": "2026-09-19T15:55:41.061722+00:00"
+}

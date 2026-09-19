@@ -3,7 +3,7 @@ from copy import deepcopy
 
 import pytest
 
-from scripts.check_live_audio import approval_resolved, approval_target
+from scripts.check_live_audio import approval_resolved, approval_target, review_audio_evidence, review_checks
 
 
 def verified_state():
@@ -53,3 +53,40 @@ def test_candidate_or_incident_drift_aborts_before_resolution():
     state["incident_id"] = "inc-new"
     with pytest.raises(ValueError):
         approval_resolved(state, target)
+
+
+def test_review_receipt_requires_bound_event_and_no_application():
+    state = verified_state()
+    target = approval_target(state)
+    session = {
+        "events": [
+            {"type": "review_requested", "request_id": "request-1", "incident_id": "inc-1", "candidate_id": "candidate-1", "audio_bytes_so_far": 0},
+            {"type": "transcript", "role": "assistant", "text": "Please confirm in review."},
+            {"type": "turn_complete", "audio_bytes_so_far": 32000},
+        ],
+        "transcripts": [{"role": "user", "text": "Apply the verified fix."}],
+        "native_output_pcm_bytes": 32000, "error": None,
+    }
+    assert all(review_checks(session, target, state, state).values())
+    session["events"][0]["incident_id"] = "stale"
+    assert not review_checks(session, target, state, state)["review_bound_to_verified_target"]
+    session["events"].append({"type": "tool_result", "name": "approve_fix", "ok": True})
+    assert not review_checks(session, target, state, state)["approval_tool_did_not_apply"]
+    after = {**state, "stage": "resolved", "approval": {"approved": True}}
+    assert not review_checks(session, target, state, after)["incident_and_approval_unchanged"]
+
+
+def test_review_audio_rejects_two_bytes_and_early_function_turn_completion():
+    target = approval_target(verified_state())
+    request = {"type": "review_requested", "incident_id": "inc-1", "candidate_id": "candidate-1", "audio_bytes_so_far": 12000}
+    session = {"events": [request, {"type": "turn_complete", "audio_bytes_so_far": 12000}], "native_output_pcm_bytes": 12002}
+    assert not any(review_audio_evidence(session, target).values())
+    session["native_output_pcm_bytes"] = 16800
+    assert review_audio_evidence(session, target)["native_pcm_returned"]
+    assert not review_audio_evidence(session, target)["assistant_response_completed_after_review"]
+    session["events"].append({"type": "transcript", "role": "assistant", "text": "Review is ready."})
+    assert not review_audio_evidence(session, target)["assistant_response_completed_after_review"]
+    session["events"].append({"type": "turn_complete", "audio_bytes_so_far": 16800})
+    assert all(review_audio_evidence(session, target).values())
+    session["events"].insert(-1, {"type": "interrupted"})
+    assert not review_audio_evidence(session, target)["assistant_response_completed_after_review"]

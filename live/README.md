@@ -48,9 +48,23 @@ overridable through `GEMINI_LIVE_MAX_SECONDS`; two concurrent sessions are allow
 `create_live_router(LiveAdapter(...))` connects four validated functions to the
 actual hub: `start_investigation`, `get_status`, `explain`, and `approve_fix`.
 Investigations remain background tasks. The approval function requires a recent,
-explicit operator confirmation captured from typed input or input transcription,
+explicit operator confirmation captured from typed input or finalized input transcription,
 bound to the current incident and its verified candidates. Background facts never
 arm approval. The manager enforces verification again before applying a change.
+
+**Current provider limitation:** the real Gemini 3.8 Live approval rehearsal on
+19 September returned the complete spoken command but omitted the SDK's optional
+`finished` flag. The relay correctly left the repair unapproved. In the verified
+fallback, an affirmative spoken request can open patch review; use typed
+“Apply the verified fix” or confirm the review button to apply it. The relay also
+supports finalized, incident-bound affirmative speech (`finished=True`), covered
+by offline tests but not observed in provider checks.
+Spoken questions, transcription, native replies and interruption
+are verified; positive spoken approval is not established. We do not treat a
+model `turn_complete` as a final user transcript: Google's WebSocket reference
+explicitly states that input transcription has no guaranteed ordering relative to
+other messages. The separate transcription model's finalized-segment behavior is
+not assumed for this conversational model.
 
 Hub `INTERRUPT` facts clear queued browser audio and use the documented Gemini
 3.8 `send_client_content(..., turn_complete=True)` interrupt behavior.
@@ -106,6 +120,22 @@ approval gate is unchanged.
 ```sh
 python scripts/check_live_audio.py --hub http://127.0.0.1:8001 --allow-live --approve-verified
 ```
+
+The current Gemini 3.8 provider omits the final transcript marker. To rehearse
+its safe speech-to-review fallback instead, use:
+
+```sh
+python scripts/check_live_audio.py --hub http://127.0.0.1:8001 --allow-live --request-review
+```
+
+This sends the same synthetic affirmative request and expects a `review_requested`
+event for the captured verified incident and candidate, plus actual transcription
+and at least 4,800 bytes (100 ms) of native audio after the request. The wait also
+requires an uninterrupted assistant response to complete after that request;
+the preceding function-call completion does not count. Success requires unchanged incident state and no approval.
+It does not click the review dialog or send typed confirmation. This is a test of
+the current provider's conservative behavior, not evidence of direct spoken
+approval; its checked receipt is stored under `.runtime/voice-checks/`.
 
 Current official references verified for this implementation:
 

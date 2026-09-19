@@ -179,7 +179,7 @@ async def execute_tool(name: str, arguments: Any, adapter: LiveAdapter, approval
             if candidate_id not in eligible:
                 return {"error": "Select a candidate that passed patch application, reproduction, and the full suite."}
             if not approval.consume(candidate_id, status):
-                return {"error": "No current explicit operator approval. Ask the human to say 'apply the verified fix' before trying again."}
+                return {"error": "No current explicit operator approval. Type exactly 'Apply the verified fix' or click the review button and confirm there. Do not repeat spoken approval. Opening review does not apply a change."}
             return await adapter.approve_fix(candidate_id, status["incident_id"])
         return {"error": f"Unknown tool: {name}"}
     except ValidationError as error:

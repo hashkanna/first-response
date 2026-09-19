@@ -1,0 +1,112 @@
+{
+  "at": "2026-09-19T15:49:56.532673+00:00",
+  "incident_id": "inc-a873fb3af5dd",
+  "model": "gemini-3.8-live",
+  "input": "typed read-only question",
+  "question": "Summarize the coupon incident and the verified recovery outcome in two short sentences. Do not change anything.",
+  "text": "The coupon incident was caused by a null error when evaluating cart dot coupon. The approved patch successfully passed reproduction tests and all checkout probes to resolve the issue.",
+  "native_pcm_bytes": 497280,
+  "sample_rate": 24000,
+  "duration_s": 10.36,
+  "events": [
+    {
+      "type": "ready",
+      "model": "gemini-3.8-live",
+      "input_sample_rate": 16000,
+      "output_sample_rate": 24000,
+      "audio_input_mode": "server_vad"
+    },
+    {
+      "type": "transcript",
+      "id": "typed-0",
+      "role": "user",
+      "text": "Summarize the coupon incident and the verified recovery outcome in two short sentences. Do not change anything.",
+      "at": "2026-09-19T15:49:45.027493+00:00",
+      "delta": false
+    },
+    {
+      "type": "transcript",
+      "id": "output-1",
+      "role": "assistant",
+      "text": "The coupon incident was ",
+      "at": "2026-09-19T15:49:46.086055+00:00",
+      "delta": true
+    },
+    {
+      "type": "transcript",
+      "id": "output-1",
+      "role": "assistant",
+      "text": "caused by a null",
+      "at": "2026-09-19T15:49:46.300241+00:00",
+      "delta": true
+    },
+    {
+      "type": "transcript",
+      "id": "output-1",
+      "role": "assistant",
+      "text": " error when evaluating",
+      "at": "2026-09-19T15:49:46.618077+00:00",
+      "delta": true
+    },
+    {
+      "type": "transcript",
+      "id": "output-1",
+      "role": "assistant",
+      "text": " cart dot",
+      "at": "2026-09-19T15:49:46.826472+00:00",
+      "delta": true
+    },
+    {
+      "type": "transcript",
+      "id": "output-1",
+      "role": "assistant",
+      "text": " coupon. The approved",
+      "at": "2026-09-19T15:49:47.087990+00:00",
+      "delta": true
+    },
+    {
+      "type": "transcript",
+      "id": "output-1",
+      "role": "assistant",
+      "text": " patch successfully",
+      "at": "2026-09-19T15:49:47.290095+00:00",
+      "delta": true
+    },
+    {
+      "type": "transcript",
+      "id": "output-1",
+      "role": "assistant",
+      "text": " passed reproduction",
+      "at": "2026-09-19T15:49:47.613822+00:00",
+      "delta": true
+    },
+    {
+      "type": "transcript",
+      "id": "output-1",
+      "role": "assistant",
+      "text": " tests and",
+      "at": "2026-09-19T15:49:47.816207+00:00",
+      "delta": true
+    },
+    {
+      "type": "transcript",
+      "id": "output-1",
+      "role": "assistant",
+      "text": " all checkout probes",
+      "at": "2026-09-19T15:49:48.136808+00:00",
+      "delta": true
+    },
+    {
+      "type": "transcript",
+      "id": "output-1",
+      "role": "assistant",
+      "text": " to resolve the issue.",
+      "at": "2026-09-19T15:49:48.344066+00:00",
+      "delta": true
+    },
+    {
+      "type": "turn_complete"
+    }
+  ],
+  "incident_unchanged": true
+}

@@ -8,16 +8,18 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import copy
 import importlib.util
 import json
 import logging
 import os
 from datetime import datetime, timezone
 from typing import Any, Callable
+from uuid import uuid4
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from .tools import ApprovalLatch, LiveAdapter, TOOL_DECLARATIONS, compact_status, execute_tool
+from .tools import ApprovalLatch, LiveAdapter, TOOL_DECLARATIONS, compact_status, execute_tool, verified_ids
 from .audio import PcmActivityDetector
 
 LOGGER = logging.getLogger(__name__)
@@ -42,6 +44,9 @@ Identify the candidate by title or ID, then summarize its actual failed test or
 assertion from candidate_verifications. Never invent a failure reason from the
 original incident cause or a candidate title. If its failure log is absent or
 does not establish why, say the reason is not available in the current evidence.
+If spoken approval cannot be finalized, direct the operator to type exactly
+"Apply the verified fix" or click the review button and confirm there. Never ask
+them to repeat spoken approval. Opening review does not apply a change.
 """
 
 
@@ -105,10 +110,56 @@ class LiveRelay:
         self.transcript_turn = 0
         self.input_text = ""
         self.input_started = False
+        self.speech_status: dict[str, Any] | None = None
+        self.speech_invalidated = False
         self.cue_queue = adapter.subscribe()
         self.idle_cues: asyncio.Queue[tuple[int, dict[str, Any]]] = asyncio.Queue(maxsize=16)
         self.cue_epoch = 0
-        self.audio_input = PcmActivityDetector(session.send_realtime_input, rms_threshold=float(os.getenv("GEMINI_LIVE_VAD_RMS", "250")))
+        self.audio_input = PcmActivityDetector(self._send_pcm_input, rms_threshold=float(os.getenv("GEMINI_LIVE_VAD_RMS", "250")))
+
+    def _clear_speech(self, *, invalidated: bool = True) -> None:
+        self.approval.clear()
+        self.input_text = ""
+        self.input_started = False
+        self.speech_status = None
+        self.speech_invalidated = invalidated
+
+    async def _send_pcm_input(self, **payload: Any) -> None:
+        if "activity_start" in payload:
+            # Revoke typed grants before delayed ASR can arrive for new speech.
+            self._clear_speech(invalidated=False)
+            self.speech_status = copy.deepcopy(self.adapter.get_status())
+        await self.session.send_realtime_input(**payload)
+
+    def _speech_matches_current(self) -> bool:
+        if self.speech_invalidated or self.speech_status is None:
+            return False
+        def binding(status: dict[str, Any]) -> dict[str, Any]:
+            eligible = verified_ids(status)
+            candidates = {}
+            for event in status.get("events", []):
+                if event.get("incident_id") == status.get("incident_id"):
+                    candidates.update((item["candidate_id"], item) for item in event.get("candidates", []) if item["candidate_id"] in eligible)
+            return {"incident": status.get("incident_id"), "stage": status.get("stage"), "eligible": eligible, "candidates": candidates}
+        return binding(self.speech_status) == binding(self.adapter.get_status())
+
+    async def _request_spoken_review(self, result: dict[str, Any]) -> None:
+        if not str(result.get("error", "")).startswith("No current explicit operator approval.") or not self.input_text or not self._speech_matches_current():
+            return
+        # This recognizes intent to OPEN review only; the missing final ASR
+        # marker still forbids execution. Negated/unrelated speech opens nothing.
+        intent = ApprovalLatch()
+        intent.observe(self.input_text, self.speech_status)
+        if not intent.candidate_ids:
+            return
+        status = self.adapter.get_status()
+        eligible = verified_ids(status)
+        candidate_id = status.get("recommended_candidate_id")
+        if candidate_id is None and len(eligible) == 1:
+            candidate_id = next(iter(eligible))
+        if status.get("stage") != "fix_verified" or candidate_id not in eligible:
+            return
+        await self.send_json({"type": "review_requested", "request_id": str(uuid4()), "incident_id": status["incident_id"], "candidate_id": candidate_id})
 
     async def send_json(self, payload: dict[str, Any]) -> None:
         async with self.send_lock:
@@ -145,8 +196,9 @@ class LiveRelay:
                 if not isinstance(text, str) or not text.strip() or len(text) > 8_000:
                     await self.send_json({"type": "error", "message": "Text must contain between 1 and 8000 characters."})
                     continue
-                await self._observe_operator(text)
-                self.input_text = ""
+                self._clear_speech()
+                if isinstance(payload.get("incident_id"), str) and payload["incident_id"] == self.adapter.get_status().get("incident_id"):
+                    await self._observe_operator(text)
                 await self.send_json({"type": "transcript", "id": f"typed-{self.transcript_turn}", "role": "user", "text": text, "at": _now(), "delta": False})
                 self.transcript_turn += 1
                 await self.session.send_realtime_input(text=text)
@@ -181,8 +233,8 @@ class LiveRelay:
                             self.approval.clear()
                             self.input_text += input_transcription.text
                             await self.send_json({"type": "transcript", "id": f"input-{self.transcript_turn}", "role": "user", "text": input_transcription.text, "at": _now(), "delta": True})
-                        if getattr(input_transcription, "finished", False):
-                            await self._observe_operator(self.input_text)
+                        if getattr(input_transcription, "finished", False) and self._speech_matches_current():
+                            self.approval.observe(self.input_text, self.speech_status)
                     output_transcription = getattr(content, "output_transcription", None)
                     if output_transcription and getattr(output_transcription, "text", None):
                         self.model_idle.clear()
@@ -195,7 +247,6 @@ class LiveRelay:
                             await self.send_audio(blob.data)
                     if getattr(content, "turn_complete", False):
                         self.model_idle.set()
-                        self.input_started = False
                         self.transcript_turn += 1
                         await self.send_json({"type": "turn_complete"})
                 tool_call = getattr(message, "tool_call", None)
@@ -203,6 +254,8 @@ class LiveRelay:
                     responses = []
                     for call in tool_call.function_calls or []:
                         result = await execute_tool(call.name, call.args or {}, self.adapter, self.approval)
+                        if call.name == "approve_fix":
+                            await self._request_spoken_review(result)
                         responses.append({"id": call.id, "name": call.name, "response": result})
                         await self.send_json({"type": "tool_result", "name": call.name, "ok": "error" not in result})
                     await self.session.send_tool_response(function_responses=responses)
@@ -236,7 +289,8 @@ class LiveRelay:
         while True:
             event = await self.cue_queue.get()
             if event.get("type") == "reset":
-                self.approval.clear()
+                self._clear_speech()
+                await self.send_json({"type": "reset"})
                 self.cue_epoch += 1
                 await self.send_cue({"scheduling": "SILENT", "facts": "The incident has been reset. Previous approvals and verification results are no longer current."})
             elif event.get("type") == "voice_cue":

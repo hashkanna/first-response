@@ -5,24 +5,26 @@ verifies competing repairs, and waits for an operator before changing the runtim
 toy shop. The UI is driven by typed incident events. Conversation and verification
 run independently so a voice connection cannot invent a passing test.
 
+Public repository: [hashkanna/first-response](https://github.com/hashkanna/first-response).
+
 ## Components
 
 ```mermaid
 flowchart TD
     UI[React war room and operator controls] <-->|IncidentUpdate events: /ws| Hub[FastAPI incident hub]
     UI -->|Fault injection, reset, questions, approval| Hub
-    UI <-->|PCM audio and typed input: /live| Voice[Gemini Live relay]
+    UI <-->|PCM audio, typed input and review requests: /live| Voice[Gemini Live relay]
     Voice <-->|Validated tools and factual milestones| Hub
     Hub --> Shop[Private runtime copy of the toy shop]
     Shop --> Probe[12 real checkout probes and exception traces]
     Probe --> Investigator[Evidence-led investigator]
     Investigator -->|Optional grounded diagnosis| AI[Pydantic AI and Gemini]
     Investigator --> Repro[Confirm reproduction fails on broken source]
-    Repro --> Fanout[Gemini generates three bounded edits]
+    Repro --> Fanout[Three Gemini-generated or authored edits]
     Fanout --> Modal[Network-disabled Modal Sandboxes]
     Modal -->|Actual pytest results| Hub
     Hub -->|Human approval and source-drift check| Apply[Apply selected runtime edit]
-    Apply --> Recheck[Repeat verification and checkout probes]
+    Apply --> Recheck[Repeat verification and checkout probes: Modal for generated code]
     Recheck --> Artifact[Resolved event and downloadable patch]
 ```
 
@@ -33,6 +35,8 @@ flowchart TD
 | `agent/fixtures.py` | Two authored faults, reproductions and three competing repairs per fault |
 | `agent/investigator.py` | Evidence collection, diagnosis, reproduction, concurrent verification and milestone emission |
 | `agent/gemini.py` | Optional Pydantic AI diagnosis with validated citations and source references |
+| `agent/generation.py` | Gemini proposes three distinct assignment edits from observed source and evidence |
+| `verification/generated.py` | Immutable snapshot identity, bounded path/edit validation, AST screening and source writes as data |
 | `verification/runner.py` | Real pytest execution in separate temporary local copies; trusted fixture code only |
 | `verification/modal_runner.py` | Real cloud isolation, bounded resources, source upload and mandatory cleanup |
 | `live/` | Server-side Gemini Live connection, audio relay, validated tools and approval latch |
@@ -41,12 +45,12 @@ flowchart TD
 
 ## Execution modes
 
-| Mode | Investigation | Verification | What can change? |
+| Mode | Investigation and repairs | Verification | What can change? |
 | --- | --- | --- | --- |
-| Recorded rehearsal | Recorded illustrative events | No tests execute | Nothing; review the recorded diff only |
-| Local investigator + local verifier | Known scenario matched to actual local exceptions and changed source | Real subprocesses in independent copies | Only the runtime shop, after approval |
-| Local investigator + Modal verifier | The same deterministic evidence flow | Real network-disabled Modal Sandboxes | Only the runtime shop, after approval |
-| Gemini investigator + Modal verifier | Pydantic AI asks Gemini to analyze actual evidence, with typed grounding checks | The same real Modal verification | Only the runtime shop, after approval |
+| Recorded rehearsal | Illustrative recorded events | No tests execute | Nothing; review the recorded diff only |
+| Local + authored | Actual exceptions and source matched to the controlled scenario; fixture repairs | Real subprocesses in independent copies | Only the runtime shop, after approval |
+| Modal + authored | Local or Gemini diagnosis; fixture repairs | Real network-disabled Modal Sandboxes | Only the runtime shop, after approval |
+| Modal + generated | Local or Gemini diagnosis; a separate Pydantic AI/Gemini agent generates three bounded edits | Initial tests and post-approval tests/probes all run in Modal | Host saves the selected edit as text after approval; generated code never executes on the host |
 
 Gemini Live is an independent optional conversation layer. It does not perform
 verification itself. Selecting a cloud backend is explicit; provider errors stop
@@ -71,10 +75,17 @@ The optional Gemini investigator receives those exceptions, the diff and numbere
 toy-shop source. Its structured result must cite existing evidence, quote actual
 substrings and identify the known changed file, line, service and fault mechanism.
 Analysis is bounded to three requests and 45 seconds. This is constrained diagnosis
-of two rehearsed faults, not discovery of arbitrary production failures. With `REPAIR_BACKEND=gemini`, a second typed agent derives three distinct edits
+of two rehearsed faults, not discovery of arbitrary production failures.
+With `REPAIR_BACKEND=gemini`, a second typed agent derives three distinct edits
 from the observed source and diagnosis. The reproduction and regression suite
 remain authored and immutable. With `REPAIR_BACKEND=authored`, repairs come from
 repository fixtures. See [generation and validation](repair-generation.md).
+
+Generated changes are limited to one existing assignment expression in an existing
+`app/*.py` module. Tests, probes and package entrypoints are immutable; new files,
+path traversal, symlinks, imports and dynamic/process/file/network operations are
+rejected. The AST screen reduces the allowed edit surface; Modal is the execution
+isolation boundary. Zero, one or several generated repairs may pass the suite.
 
 A failing reproduction must be an actual pytest test failure, not a collection
 error or timeout. After that check, three candidate jobs run concurrently. Each
@@ -85,8 +96,9 @@ nonzero executed tests and zero reported failures before backend approval.
 Modal uploads only the validated Python snapshot and reproduction. Each sandbox
 has outbound networking blocked, no credentials or mounted volumes, a 60-second
 lifetime, and bounded CPU/memory. Cleanup terminates and detaches the sandbox on
-success, error or cancellation. See [Modal operations](modal.md) and the
-[initial cloud verification evidence](verification-evidence.md).
+success, error or cancellation. See [Modal operations](modal.md),
+[cloud verification evidence](verification-evidence.md) and
+[actual generated runs](generated-run-evidence.md).
 
 ## State and approval
 
@@ -103,14 +115,35 @@ current source against the exact patch previously shown. A lock serializes reset
 fault injection and approval. The chosen edit is applied only to the runtime copy,
 then tested again and probed. Generated code and its recovery probes execute
 exclusively in Modal; the host only saves validated source text. A SHA256 digest
-binds the complete Python snapshot to generation, initial tests and approval. Any failure restores the original file. A successful
-operation emits `resolved` and exposes the approved patch as a downloadable file.
+binds the original Python source and immutable tests to generation, candidate
+verification and approval. Recovery reconstructs that base in memory, verifies
+the applied edit remotely and checks the host snapshot again before resolution.
+Any failure restores the original file. A successful operation emits `resolved`
+and exposes the approved patch as a downloadable file.
 No GitHub pull request is created by this implementation.
 
 Live tool calls cannot authorize themselves. An approval latch requires a recent,
-explicit operator confirmation, binds it to the current incident and its already
-verified candidates, and consumes the grant once. A background cue never arms that
-latch. The hub checks the approval again before applying an edit.
+explicit confirmation bound to the incident and already verified candidates, and
+consumes the grant once. Typed Live approvals carry the browser's captured incident
+ID. Review dialogs capture both the incident and candidate; the hub validates them
+again on the final click. Reset invalidates prior approval and closes the dialog.
+
+The observed Gemini 3.8 speech stream omitted the optional transcription completion
+flag. Missing finality therefore never grants approval. An affirmative spoken
+request can open the verified patch for review; an explicit UI confirmation or
+complete incident-bound typed command applies it on this verified provider path.
+The relay also supports affirmative speech with `finished=True` and matching
+captured incident/candidate context; this direct spoken approval path is covered
+by offline tests but has not been observed in provider checks.
+A model's `turn_complete` is not
+speech finality, and neither a pause nor a background cue creates authorization.
+Speech context is captured at actual audio activity start; new speech revokes old
+grants, reset discards that context, and negative transcript continuations remain
+part of the same utterance across model response boundaries.
+
+Actual provider checks used typed input and synthetic PCM speech. They establish
+provider audio/transcription behavior, not human microphone or headset usability;
+**no human microphone was tested**.
 
 ## API surface
 
@@ -131,7 +164,7 @@ local configuration files.
 | `POST /say` | Typed command/question; include the current `incident_id` for any approval intent |
 | `POST /approve` | JSON `incident_id` and `candidate_id`; apply only the matching verified repair |
 | `GET /artifacts/{filename}` | Download a verified patch generated by an approved operation |
-| `WS /live` | Optional real Gemini Live audio/text relay and typed tool calls |
+| `WS /live` | Gemini Live audio/text relay; typed approval includes `incident_id`; spoken review requests identify the incident and candidate without applying a change |
 
 HTTP mutations and WebSockets check allowed browser origins. The hub is intended
 for loopback use and does not implement public multi-user authentication. Keep it

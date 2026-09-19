@@ -1,0 +1,493 @@
+{
+  "description": "Actual Gemini-generated coupon repairs and browser-approved Modal recovery. Spoken approval was safely denied; explicit UI approval completed the repair.",
+  "incident_id": "inc-a873fb3af5dd",
+  "investigator": {
+    "backend": "gemini",
+    "framework": "pydantic-ai",
+    "model": "gemini-3.8-flash",
+    "requests": 1,
+    "input_tokens": 2991,
+    "output_tokens": 186,
+    "analysis": {
+      "service": "checkout",
+      "file": "shop/app/checkout.py",
+      "line": 8,
+      "commit": null,
+      "explanation": "The checkout function was changed to directly access cart.coupon.code without checking if cart.coupon is None. When a cart has no coupon, this raises an AttributeError.",
+      "evidence_ids": [
+        "trace-checkout",
+        "deploy-change"
+      ],
+      "confidence": 1.0,
+      "fault_pattern": "missing_optional_value",
+      "causal_code_quote": "coupon_code = cart.coupon.code",
+      "evidence_quotes": [
+        {
+          "evidence_id": "trace-checkout",
+          "quote": "AttributeError: 'NoneType' object has no attribute 'code'"
+        },
+        {
+          "evidence_id": "deploy-change",
+          "quote": "+    coupon_code = cart.coupon.code"
+        }
+      ]
+    },
+    "incident_id": "inc-a873fb3af5dd",
+    "at": "2026-09-19T15:39:03.038614+00:00"
+  },
+  "generation": {
+    "backend": "gemini",
+    "framework": "pydantic-ai",
+    "model": "gemini-3.8-flash",
+    "requests": 1,
+    "input_tokens": 2809,
+    "output_tokens": 267,
+    "source_snapshot_sha256": "72bcafbdfa10d658ea6db3865caeaebd1860432424b94f6aaf983a11cc91335e",
+    "input_payload_sha256": "84611d41c05896d1387290638a94460891ee7ef5162aec2198aa8099489cab55",
+    "output_payload_sha256": "7d6ce5ec820190f8fcec007b16bf7a7e6e882c9430277720c246e9156ba6ada3",
+    "candidates": [
+      {
+        "title": "Use ternary check for cart.coupon is not None",
+        "rationale": "Restore the original ternary check to safely handle cases where cart.coupon is None, preventing AttributeError.",
+        "path": "app/checkout.py",
+        "before": "coupon_code = cart.coupon.code",
+        "after": "coupon_code = cart.coupon.code if cart.coupon is not None else None"
+      },
+      {
+        "title": "Use truthiness check for cart.coupon",
+        "rationale": "Check truthiness of cart.coupon before accessing its code attribute to avoid NoneType errors.",
+        "path": "app/checkout.py",
+        "before": "coupon_code = cart.coupon.code",
+        "after": "coupon_code = cart.coupon.code if cart.coupon else None"
+      },
+      {
+        "title": "Use getattr on cart.coupon with default None",
+        "rationale": "Use getattr on cart.coupon with a default of None so that accessing code on None safely evaluates to None.",
+        "path": "app/checkout.py",
+        "before": "coupon_code = cart.coupon.code",
+        "after": "coupon_code = getattr(cart.coupon, \"code\", None)"
+      }
+    ],
+    "candidate_ids": [
+      "gen-1-2eb934a5b9",
+      "gen-2-780c241470",
+      "gen-3-b171deb61f"
+    ],
+    "execution_boundary": "network-disabled Modal sandbox; never executed on the host",
+    "incident_id": "inc-a873fb3af5dd",
+    "at": "2026-09-19T15:39:07.239970+00:00"
+  },
+  "events": [
+    {
+      "incident_id": "inc-a873fb3af5dd",
+      "stage": "alerted",
+      "at": "2026-09-19T15:39:00.997597Z",
+      "message": "Checkout failed on 6 of 12 local probe requests (50%); alert threshold is 5%.",
+      "evidence": [
+        {
+          "evidence_id": "checkout-error-rate",
+          "kind": "metric",
+          "summary": "50% checkout error rate in 12 probe requests.",
+          "detail": "{\n  \"requests\": 12,\n  \"failed\": 6,\n  \"error_rate\": 0.5,\n  \"threshold\": 0.05\n}",
+          "source_ref": ".runtime/spans.jsonl"
+        }
+      ],
+      "root_cause": null,
+      "candidates": [],
+      "results": [],
+      "pr_url": null
+    },
+    {
+      "incident_id": "inc-a873fb3af5dd",
+      "stage": "investigating",
+      "at": "2026-09-19T15:39:00.998495Z",
+      "message": "Inspecting the actual failed checkouts and the runtime source change.",
+      "evidence": [],
+      "root_cause": null,
+      "candidates": [],
+      "results": [],
+      "pr_url": null
+    },
+    {
+      "incident_id": "inc-a873fb3af5dd",
+      "stage": "investigating",
+      "at": "2026-09-19T15:39:00.998783Z",
+      "message": "Pydantic AI is asking Gemini to analyze the actual exception, deploy diff, and runtime source.",
+      "evidence": [
+        {
+          "evidence_id": "trace-checkout",
+          "kind": "exception",
+          "summary": "AttributeError: 'NoneType' object has no attribute 'code'",
+          "detail": "Traceback (most recent call last):\n  File \"<workspace>/.runtime/shop/probe.py\", line 18, in probe\n    receipt = checkout(cart)\n              ^^^^^^^^^^^^^^\n  File \"<workspace>/.runtime/shop/app/checkout.py\", line 8, in checkout\n    coupon_code = cart.coupon.code\n                  ^^^^^^^^^^^^^^^^\nAttributeError: 'NoneType' object has no attribute 'code'\n",
+          "source_ref": ".runtime/spans.jsonl"
+        },
+        {
+          "evidence_id": "deploy-change",
+          "kind": "deploy_diff",
+          "summary": "The injected fault changed shop/app/checkout.py.",
+          "detail": "--- a/app/checkout.py\n+++ b/app/checkout.py\n@@ -5,7 +5,7 @@\n def checkout(cart: Cart) -> dict:\n     if not cart.items:\n         raise ValueError(\"Cannot check out an empty cart\")\n-    coupon_code = cart.coupon.code if cart.coupon is not None else None\n+    coupon_code = cart.coupon.code\n     subtotal = cart.subtotal_cents\n     discount = subtotal // 10 if coupon_code == \"SAVE10\" else 0\n     payment = charge(subtotal - discount)\n",
+          "source_ref": "shop/app/checkout.py"
+        },
+        {
+          "evidence_id": "source-location",
+          "kind": "code",
+          "summary": "The failing runtime source matches the authored null_error fault.",
+          "detail": "  4  \n  5  def checkout(cart: Cart) -> dict:\n  6      if not cart.items:\n  7          raise ValueError(\"Cannot check out an empty cart\")\n  8      coupon_code = cart.coupon.code\n  9      subtotal = cart.subtotal_cents\n 10      discount = subtotal // 10 if coupon_code == \"SAVE10\" else 0\n 11      payment = charge(subtotal - discount)\n 12      return {\"subtotal_cents\": subtotal, \"discount_cents\": discount, \"payment\": payment}",
+          "source_ref": "shop/app/checkout.py:8"
+        }
+      ],
+      "root_cause": null,
+      "candidates": [],
+      "results": [],
+      "pr_url": null
+    },
+    {
+      "incident_id": "inc-a873fb3af5dd",
+      "stage": "cause_found",
+      "at": "2026-09-19T15:39:03.038846Z",
+      "message": "The checkout function was changed to directly access cart.coupon.code without checking if cart.coupon is None. When a cart has no coupon, this raises an AttributeError.",
+      "evidence": [
+        {
+          "evidence_id": "trace-checkout",
+          "kind": "exception",
+          "summary": "AttributeError: 'NoneType' object has no attribute 'code'",
+          "detail": "Traceback (most recent call last):\n  File \"<workspace>/.runtime/shop/probe.py\", line 18, in probe\n    receipt = checkout(cart)\n              ^^^^^^^^^^^^^^\n  File \"<workspace>/.runtime/shop/app/checkout.py\", line 8, in checkout\n    coupon_code = cart.coupon.code\n                  ^^^^^^^^^^^^^^^^\nAttributeError: 'NoneType' object has no attribute 'code'\n",
+          "source_ref": ".runtime/spans.jsonl"
+        },
+        {
+          "evidence_id": "deploy-change",
+          "kind": "deploy_diff",
+          "summary": "The injected fault changed shop/app/checkout.py.",
+          "detail": "--- a/app/checkout.py\n+++ b/app/checkout.py\n@@ -5,7 +5,7 @@\n def checkout(cart: Cart) -> dict:\n     if not cart.items:\n         raise ValueError(\"Cannot check out an empty cart\")\n-    coupon_code = cart.coupon.code if cart.coupon is not None else None\n+    coupon_code = cart.coupon.code\n     subtotal = cart.subtotal_cents\n     discount = subtotal // 10 if coupon_code == \"SAVE10\" else 0\n     payment = charge(subtotal - discount)\n",
+          "source_ref": "shop/app/checkout.py"
+        },
+        {
+          "evidence_id": "source-location",
+          "kind": "code",
+          "summary": "The failing runtime source matches the authored null_error fault.",
+          "detail": "  4  \n  5  def checkout(cart: Cart) -> dict:\n  6      if not cart.items:\n  7          raise ValueError(\"Cannot check out an empty cart\")\n  8      coupon_code = cart.coupon.code\n  9      subtotal = cart.subtotal_cents\n 10      discount = subtotal // 10 if coupon_code == \"SAVE10\" else 0\n 11      payment = charge(subtotal - discount)\n 12      return {\"subtotal_cents\": subtotal, \"discount_cents\": discount, \"payment\": payment}",
+          "source_ref": "shop/app/checkout.py:8"
+        }
+      ],
+      "root_cause": {
+        "service": "checkout",
+        "file": "shop/app/checkout.py",
+        "line": 8,
+        "commit": null,
+        "explanation": "The checkout function was changed to directly access cart.coupon.code without checking if cart.coupon is None. When a cart has no coupon, this raises an AttributeError.",
+        "evidence_ids": [
+          "trace-checkout",
+          "deploy-change"
+        ],
+        "confidence": 1.0
+      },
+      "candidates": [],
+      "results": [],
+      "pr_url": null
+    },
+    {
+      "incident_id": "inc-a873fb3af5dd",
+      "stage": "reproduced",
+      "at": "2026-09-19T15:39:05.770329Z",
+      "message": "The reproduction fails on the broken runtime copy. Testing candidate fixes next.",
+      "evidence": [
+        {
+          "evidence_id": "repro-log",
+          "kind": "trace",
+          "summary": "The reproduction produced one failing test on the broken code.",
+          "detail": "MODAL SANDBOX sb-cH2hiTLm2l1S2zaJyW3p5R\nBROKEN SNAPSHOT sha256:9a1c32036ea02e8d6a61ce405f0f40d7caf5491d0b73af8326222c2adbf4c1dc\nF                                                                        [100%]\n=================================== FAILURES ===================================\n__________________________ test_repro_missing_coupon ___________________________\ntests/test_repro_null_error.py:7: in test_repro_missing_coupon\n    receipt = checkout(cart)\n              ^^^^^^^^^^^^^^\nshop/app/checkout.py:8: in checkout\n    coupon_code = cart.coupon.code\n                  ^^^^^^^^^^^^^^^^\nE   AttributeError: 'NoneType' object has no attribute 'code'\n=========================== short test summary info ============================\nFAILED tests/test_repro_null_error.py::test_repro_missing_coupon - AttributeE...\n1 failed in 0.02s\n",
+          "source_ref": "tests/test_repro_null_error.py"
+        }
+      ],
+      "root_cause": null,
+      "candidates": [],
+      "results": [],
+      "pr_url": null
+    },
+    {
+      "incident_id": "inc-a873fb3af5dd",
+      "stage": "reproduced",
+      "at": "2026-09-19T15:39:05.770384Z",
+      "message": "The reproduction fails. Gemini is deriving three repair edits from the broken source and observed evidence.",
+      "evidence": [],
+      "root_cause": null,
+      "candidates": [],
+      "results": [],
+      "pr_url": null
+    },
+    {
+      "incident_id": "inc-a873fb3af5dd",
+      "stage": "fixes_proposed",
+      "at": "2026-09-19T15:39:07.247622Z",
+      "message": "Gemini generated three distinct bounded repair patches. None has been executed on the host or declared correct.",
+      "evidence": [],
+      "root_cause": null,
+      "candidates": [
+        {
+          "candidate_id": "gen-1-2eb934a5b9",
+          "title": "Use ternary check for cart.coupon is not None",
+          "rationale": "Restore the original ternary check to safely handle cases where cart.coupon is None, preventing AttributeError.",
+          "patch": "--- a/app/checkout.py\n+++ b/app/checkout.py\n@@ -5,7 +5,7 @@\n def checkout(cart: Cart) -> dict:\n     if not cart.items:\n         raise ValueError(\"Cannot check out an empty cart\")\n-    coupon_code = cart.coupon.code\n+    coupon_code = cart.coupon.code if cart.coupon is not None else None\n     subtotal = cart.subtotal_cents\n     discount = subtotal // 10 if coupon_code == \"SAVE10\" else 0\n     payment = charge(subtotal - discount)\n",
+          "files_touched": [
+            "shop/app/checkout.py"
+          ],
+          "origin": "gemini",
+          "snapshot_sha": "72bcafbdfa10d658ea6db3865caeaebd1860432424b94f6aaf983a11cc91335e"
+        },
+        {
+          "candidate_id": "gen-2-780c241470",
+          "title": "Use truthiness check for cart.coupon",
+          "rationale": "Check truthiness of cart.coupon before accessing its code attribute to avoid NoneType errors.",
+          "patch": "--- a/app/checkout.py\n+++ b/app/checkout.py\n@@ -5,7 +5,7 @@\n def checkout(cart: Cart) -> dict:\n     if not cart.items:\n         raise ValueError(\"Cannot check out an empty cart\")\n-    coupon_code = cart.coupon.code\n+    coupon_code = cart.coupon.code if cart.coupon else None\n     subtotal = cart.subtotal_cents\n     discount = subtotal // 10 if coupon_code == \"SAVE10\" else 0\n     payment = charge(subtotal - discount)\n",
+          "files_touched": [
+            "shop/app/checkout.py"
+          ],
+          "origin": "gemini",
+          "snapshot_sha": "72bcafbdfa10d658ea6db3865caeaebd1860432424b94f6aaf983a11cc91335e"
+        },
+        {
+          "candidate_id": "gen-3-b171deb61f",
+          "title": "Use getattr on cart.coupon with default None",
+          "rationale": "Use getattr on cart.coupon with a default of None so that accessing code on None safely evaluates to None.",
+          "patch": "--- a/app/checkout.py\n+++ b/app/checkout.py\n@@ -5,7 +5,7 @@\n def checkout(cart: Cart) -> dict:\n     if not cart.items:\n         raise ValueError(\"Cannot check out an empty cart\")\n-    coupon_code = cart.coupon.code\n+    coupon_code = getattr(cart.coupon, \"code\", None)\n     subtotal = cart.subtotal_cents\n     discount = subtotal // 10 if coupon_code == \"SAVE10\" else 0\n     payment = charge(subtotal - discount)\n",
+          "files_touched": [
+            "shop/app/checkout.py"
+          ],
+          "origin": "gemini",
+          "snapshot_sha": "72bcafbdfa10d658ea6db3865caeaebd1860432424b94f6aaf983a11cc91335e"
+        }
+      ],
+      "results": [],
+      "pr_url": null
+    },
+    {
+      "incident_id": "inc-a873fb3af5dd",
+      "stage": "verifying",
+      "at": "2026-09-19T15:39:07.247672Z",
+      "message": "Running all three candidates in network-disabled Modal sandboxes: reproduction plus regression suite.",
+      "evidence": [],
+      "root_cause": null,
+      "candidates": [
+        {
+          "candidate_id": "gen-1-2eb934a5b9",
+          "title": "Use ternary check for cart.coupon is not None",
+          "rationale": "Restore the original ternary check to safely handle cases where cart.coupon is None, preventing AttributeError.",
+          "patch": "--- a/app/checkout.py\n+++ b/app/checkout.py\n@@ -5,7 +5,7 @@\n def checkout(cart: Cart) -> dict:\n     if not cart.items:\n         raise ValueError(\"Cannot check out an empty cart\")\n-    coupon_code = cart.coupon.code\n+    coupon_code = cart.coupon.code if cart.coupon is not None else None\n     subtotal = cart.subtotal_cents\n     discount = subtotal // 10 if coupon_code == \"SAVE10\" else 0\n     payment = charge(subtotal - discount)\n",
+          "files_touched": [
+            "shop/app/checkout.py"
+          ],
+          "origin": "gemini",
+          "snapshot_sha": "72bcafbdfa10d658ea6db3865caeaebd1860432424b94f6aaf983a11cc91335e"
+        },
+        {
+          "candidate_id": "gen-2-780c241470",
+          "title": "Use truthiness check for cart.coupon",
+          "rationale": "Check truthiness of cart.coupon before accessing its code attribute to avoid NoneType errors.",
+          "patch": "--- a/app/checkout.py\n+++ b/app/checkout.py\n@@ -5,7 +5,7 @@\n def checkout(cart: Cart) -> dict:\n     if not cart.items:\n         raise ValueError(\"Cannot check out an empty cart\")\n-    coupon_code = cart.coupon.code\n+    coupon_code = cart.coupon.code if cart.coupon else None\n     subtotal = cart.subtotal_cents\n     discount = subtotal // 10 if coupon_code == \"SAVE10\" else 0\n     payment = charge(subtotal - discount)\n",
+          "files_touched": [
+            "shop/app/checkout.py"
+          ],
+          "origin": "gemini",
+          "snapshot_sha": "72bcafbdfa10d658ea6db3865caeaebd1860432424b94f6aaf983a11cc91335e"
+        },
+        {
+          "candidate_id": "gen-3-b171deb61f",
+          "title": "Use getattr on cart.coupon with default None",
+          "rationale": "Use getattr on cart.coupon with a default of None so that accessing code on None safely evaluates to None.",
+          "patch": "--- a/app/checkout.py\n+++ b/app/checkout.py\n@@ -5,7 +5,7 @@\n def checkout(cart: Cart) -> dict:\n     if not cart.items:\n         raise ValueError(\"Cannot check out an empty cart\")\n-    coupon_code = cart.coupon.code\n+    coupon_code = getattr(cart.coupon, \"code\", None)\n     subtotal = cart.subtotal_cents\n     discount = subtotal // 10 if coupon_code == \"SAVE10\" else 0\n     payment = charge(subtotal - discount)\n",
+          "files_touched": [
+            "shop/app/checkout.py"
+          ],
+          "origin": "gemini",
+          "snapshot_sha": "72bcafbdfa10d658ea6db3865caeaebd1860432424b94f6aaf983a11cc91335e"
+        }
+      ],
+      "results": [],
+      "pr_url": null
+    },
+    {
+      "incident_id": "inc-a873fb3af5dd",
+      "stage": "verifying",
+      "at": "2026-09-19T15:39:09.613603Z",
+      "message": "gen-2-780c241470 passed: 25 tests executed, 0 failed.",
+      "evidence": [],
+      "root_cause": null,
+      "candidates": [],
+      "results": [
+        {
+          "candidate_id": "gen-2-780c241470",
+          "applied": true,
+          "repro_passed": true,
+          "suite_passed": true,
+          "tests_run": 25,
+          "tests_failed": 0,
+          "duration_s": 2.201,
+          "log_tail": "MODAL GENERATED VERIFICATION sb-WodUBhYdbfEFfygP2D6TF4\nBROKEN SNAPSHOT sha256:72bcafbdfa10d658ea6db3865caeaebd1860432424b94f6aaf983a11cc91335e\nREPRODUCTION\n.                                                                        [100%]\n1 passed in 0.01s\n\nREGRESSION SUITE\n........................                                                 [100%]\n24 passed in 0.04s\n"
+        }
+      ],
+      "pr_url": null
+    },
+    {
+      "incident_id": "inc-a873fb3af5dd",
+      "stage": "verifying",
+      "at": "2026-09-19T15:39:09.628071Z",
+      "message": "gen-3-b171deb61f passed: 25 tests executed, 0 failed.",
+      "evidence": [],
+      "root_cause": null,
+      "candidates": [],
+      "results": [
+        {
+          "candidate_id": "gen-3-b171deb61f",
+          "applied": true,
+          "repro_passed": true,
+          "suite_passed": true,
+          "tests_run": 25,
+          "tests_failed": 0,
+          "duration_s": 2.262,
+          "log_tail": "MODAL GENERATED VERIFICATION sb-VvGmjNSFhgD9pXTOD8cL9f\nBROKEN SNAPSHOT sha256:72bcafbdfa10d658ea6db3865caeaebd1860432424b94f6aaf983a11cc91335e\nREPRODUCTION\n.                                                                        [100%]\n1 passed in 0.01s\n\nREGRESSION SUITE\n........................                                                 [100%]\n24 passed in 0.04s\n"
+        }
+      ],
+      "pr_url": null
+    },
+    {
+      "incident_id": "inc-a873fb3af5dd",
+      "stage": "verifying",
+      "at": "2026-09-19T15:39:09.839060Z",
+      "message": "gen-1-2eb934a5b9 passed: 25 tests executed, 0 failed.",
+      "evidence": [],
+      "root_cause": null,
+      "candidates": [],
+      "results": [
+        {
+          "candidate_id": "gen-1-2eb934a5b9",
+          "applied": true,
+          "repro_passed": true,
+          "suite_passed": true,
+          "tests_run": 25,
+          "tests_failed": 0,
+          "duration_s": 2.4,
+          "log_tail": "MODAL GENERATED VERIFICATION sb-ZW7CMZtuFKXhRHEBqUGEE0\nBROKEN SNAPSHOT sha256:72bcafbdfa10d658ea6db3865caeaebd1860432424b94f6aaf983a11cc91335e\nREPRODUCTION\n.                                                                        [100%]\n1 passed in 0.01s\n\nREGRESSION SUITE\n........................                                                 [100%]\n24 passed in 0.04s\n"
+        }
+      ],
+      "pr_url": null
+    },
+    {
+      "incident_id": "inc-a873fb3af5dd",
+      "stage": "fix_verified",
+      "at": "2026-09-19T15:39:09.839264Z",
+      "message": "3 candidates tested. 3 passed all 25 tests, including the reproduction and regression suite. Approval is required before applying gen-1-2eb934a5b9 to the toy shop.",
+      "evidence": [],
+      "root_cause": null,
+      "candidates": [
+        {
+          "candidate_id": "gen-1-2eb934a5b9",
+          "title": "Use ternary check for cart.coupon is not None",
+          "rationale": "Restore the original ternary check to safely handle cases where cart.coupon is None, preventing AttributeError.",
+          "patch": "--- a/app/checkout.py\n+++ b/app/checkout.py\n@@ -5,7 +5,7 @@\n def checkout(cart: Cart) -> dict:\n     if not cart.items:\n         raise ValueError(\"Cannot check out an empty cart\")\n-    coupon_code = cart.coupon.code\n+    coupon_code = cart.coupon.code if cart.coupon is not None else None\n     subtotal = cart.subtotal_cents\n     discount = subtotal // 10 if coupon_code == \"SAVE10\" else 0\n     payment = charge(subtotal - discount)\n",
+          "files_touched": [
+            "shop/app/checkout.py"
+          ],
+          "origin": "gemini",
+          "snapshot_sha": "72bcafbdfa10d658ea6db3865caeaebd1860432424b94f6aaf983a11cc91335e"
+        },
+        {
+          "candidate_id": "gen-2-780c241470",
+          "title": "Use truthiness check for cart.coupon",
+          "rationale": "Check truthiness of cart.coupon before accessing its code attribute to avoid NoneType errors.",
+          "patch": "--- a/app/checkout.py\n+++ b/app/checkout.py\n@@ -5,7 +5,7 @@\n def checkout(cart: Cart) -> dict:\n     if not cart.items:\n         raise ValueError(\"Cannot check out an empty cart\")\n-    coupon_code = cart.coupon.code\n+    coupon_code = cart.coupon.code if cart.coupon else None\n     subtotal = cart.subtotal_cents\n     discount = subtotal // 10 if coupon_code == \"SAVE10\" else 0\n     payment = charge(subtotal - discount)\n",
+          "files_touched": [
+            "shop/app/checkout.py"
+          ],
+          "origin": "gemini",
+          "snapshot_sha": "72bcafbdfa10d658ea6db3865caeaebd1860432424b94f6aaf983a11cc91335e"
+        },
+        {
+          "candidate_id": "gen-3-b171deb61f",
+          "title": "Use getattr on cart.coupon with default None",
+          "rationale": "Use getattr on cart.coupon with a default of None so that accessing code on None safely evaluates to None.",
+          "patch": "--- a/app/checkout.py\n+++ b/app/checkout.py\n@@ -5,7 +5,7 @@\n def checkout(cart: Cart) -> dict:\n     if not cart.items:\n         raise ValueError(\"Cannot check out an empty cart\")\n-    coupon_code = cart.coupon.code\n+    coupon_code = getattr(cart.coupon, \"code\", None)\n     subtotal = cart.subtotal_cents\n     discount = subtotal // 10 if coupon_code == \"SAVE10\" else 0\n     payment = charge(subtotal - discount)\n",
+          "files_touched": [
+            "shop/app/checkout.py"
+          ],
+          "origin": "gemini",
+          "snapshot_sha": "72bcafbdfa10d658ea6db3865caeaebd1860432424b94f6aaf983a11cc91335e"
+        }
+      ],
+      "results": [
+        {
+          "candidate_id": "gen-2-780c241470",
+          "applied": true,
+          "repro_passed": true,
+          "suite_passed": true,
+          "tests_run": 25,
+          "tests_failed": 0,
+          "duration_s": 2.201,
+          "log_tail": "MODAL GENERATED VERIFICATION sb-WodUBhYdbfEFfygP2D6TF4\nBROKEN SNAPSHOT sha256:72bcafbdfa10d658ea6db3865caeaebd1860432424b94f6aaf983a11cc91335e\nREPRODUCTION\n.                                                                        [100%]\n1 passed in 0.01s\n\nREGRESSION SUITE\n........................                                                 [100%]\n24 passed in 0.04s\n"
+        },
+        {
+          "candidate_id": "gen-3-b171deb61f",
+          "applied": true,
+          "repro_passed": true,
+          "suite_passed": true,
+          "tests_run": 25,
+          "tests_failed": 0,
+          "duration_s": 2.262,
+          "log_tail": "MODAL GENERATED VERIFICATION sb-VvGmjNSFhgD9pXTOD8cL9f\nBROKEN SNAPSHOT sha256:72bcafbdfa10d658ea6db3865caeaebd1860432424b94f6aaf983a11cc91335e\nREPRODUCTION\n.                                                                        [100%]\n1 passed in 0.01s\n\nREGRESSION SUITE\n........................                                                 [100%]\n24 passed in 0.04s\n"
+        },
+        {
+          "candidate_id": "gen-1-2eb934a5b9",
+          "applied": true,
+          "repro_passed": true,
+          "suite_passed": true,
+          "tests_run": 25,
+          "tests_failed": 0,
+          "duration_s": 2.4,
+          "log_tail": "MODAL GENERATED VERIFICATION sb-ZW7CMZtuFKXhRHEBqUGEE0\nBROKEN SNAPSHOT sha256:72bcafbdfa10d658ea6db3865caeaebd1860432424b94f6aaf983a11cc91335e\nREPRODUCTION\n.                                                                        [100%]\n1 passed in 0.01s\n\nREGRESSION SUITE\n........................                                                 [100%]\n24 passed in 0.04s\n"
+        }
+      ],
+      "pr_url": null
+    },
+    {
+      "incident_id": "inc-a873fb3af5dd",
+      "stage": "resolved",
+      "at": "2026-09-19T15:45:47.626822Z",
+      "message": "Approved patch saved to the runtime toy shop. Modal recovery passed 25 tests and all 12 checkout probes. Download the verified patch at /artifacts/inc-a873fb3af5dd-gen-1-2eb934a5b9.patch.",
+      "evidence": [],
+      "root_cause": null,
+      "candidates": [
+        {
+          "candidate_id": "gen-1-2eb934a5b9",
+          "title": "Use ternary check for cart.coupon is not None",
+          "rationale": "Restore the original ternary check to safely handle cases where cart.coupon is None, preventing AttributeError.",
+          "patch": "--- a/app/checkout.py\n+++ b/app/checkout.py\n@@ -5,7 +5,7 @@\n def checkout(cart: Cart) -> dict:\n     if not cart.items:\n         raise ValueError(\"Cannot check out an empty cart\")\n-    coupon_code = cart.coupon.code\n+    coupon_code = cart.coupon.code if cart.coupon is not None else None\n     subtotal = cart.subtotal_cents\n     discount = subtotal // 10 if coupon_code == \"SAVE10\" else 0\n     payment = charge(subtotal - discount)\n",
+          "files_touched": [
+            "shop/app/checkout.py"
+          ],
+          "origin": "gemini",
+          "snapshot_sha": "72bcafbdfa10d658ea6db3865caeaebd1860432424b94f6aaf983a11cc91335e"
+        }
+      ],
+      "results": [
+        {
+          "candidate_id": "gen-1-2eb934a5b9",
+          "applied": true,
+          "repro_passed": true,
+          "suite_passed": true,
+          "tests_run": 25,
+          "tests_failed": 0,
+          "duration_s": 3.923,
+          "log_tail": "MODAL GENERATED VERIFICATION sb-dwRbjgwFcYDeZhgm2FN7kY\nBROKEN SNAPSHOT sha256:72bcafbdfa10d658ea6db3865caeaebd1860432424b94f6aaf983a11cc91335e\nREPRODUCTION\n.                                                                        [100%]\n1 passed in 0.02s\n\nREGRESSION SUITE\n........................                                                 [100%]\n24 passed in 0.07s\n\nREMOTE CHECKOUT PROBE\n12 requests; 0 failed.\n"
+        }
+      ],
+      "pr_url": null
+    }
+  ],
+  "approval": {
+    "incident_id": "inc-a873fb3af5dd",
+    "candidate_id": "gen-1-2eb934a5b9",
+    "approved": true,
+    "artifact_url": "/artifacts/inc-a873fb3af5dd-gen-1-2eb934a5b9.patch",
+    "origin": "gemini",
+    "snapshot_sha": "72bcafbdfa10d658ea6db3865caeaebd1860432424b94f6aaf983a11cc91335e"
+  }
+}

@@ -31,6 +31,24 @@ The broken Python snapshot was bound to SHA256
 See the [public execution receipt](evidence/generated-timeout.json) for exact
 events, source diffs, provider usage and Modal test output.
 
+## Missing coupon
+
+Incident: `inc-a873fb3af5dd`. In one generation request (2809 input tokens,
+267 output tokens), Gemini produced three distinct guarded assignments:
+
+- An explicit `cart.coupon is not None` conditional.
+- A truthiness conditional on `cart.coupon`.
+- `getattr(cart.coupon, "code", None)`.
+
+Each passed the reproduction and all 24 regressions. The UI measured 8.8 seconds
+to verified candidates. The operator selected the explicit `is not None` guard
+through the review dialog; fresh Modal recovery passed 25 tests and 12 checkout
+probes. [Inspect the public receipt](evidence/generated-coupon.json).
+
+A prior spoken approval attempt was recognized but safely denied because the
+provider omitted the final-transcript flag required by the approval gate. The
+successful approval above was an explicit browser button action, not speech.
+
 ## Voice input
 
 An actual `gemini-3.8-live` session transcribed synthesized speech sent as PCM16 at

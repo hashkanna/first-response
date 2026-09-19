@@ -416,7 +416,7 @@ export default function App() {
   const send = (event: FormEvent) => {
     event.preventDefault();
     if (!command.trim() || busy) return;
-    if (gemini.isConnected) gemini.sendText(command.trim());
+    if (gemini.isConnected) gemini.sendText(command.trim(), state.incidentId);
     else void room.sendMessage(command.trim());
     setCommand("");
   };
@@ -450,8 +450,9 @@ export default function App() {
       ),
     });
   const approve = (candidate: FixCandidate) => {
+    const reviewedIncidentId = state.incidentId;
     if (mode === "demo") {
-      void room.approveFix(candidate.candidate_id);
+      void room.approveFix(candidate.candidate_id, reviewedIncidentId);
       inspect(
         candidate,
         state.results.find((r) => r.candidate_id === candidate.candidate_id),
@@ -472,7 +473,10 @@ export default function App() {
               className="primary-button"
               onClick={() => {
                 setModal(null);
-                void room.approveFix(candidate.candidate_id);
+                void room.approveFix(
+                  candidate.candidate_id,
+                  reviewedIncidentId,
+                );
               }}
             >
               <ShieldCheck size={16} />
@@ -482,6 +486,32 @@ export default function App() {
         ),
       });
   };
+  useEffect(() => {
+    setModal(null);
+  }, [mode, state.incidentId]);
+  useEffect(() => {
+    const request = gemini.reviewRequest;
+    if (!request) return;
+    gemini.clearReviewRequest();
+    if (
+      mode !== "live" ||
+      request.incidentId !== state.incidentId ||
+      state.stage !== "fix_verified"
+    )
+      return;
+    const candidate = getVerifiedCandidates(state).find(
+      (item) => item.candidate_id === request.candidateId,
+    );
+    if (candidate) approve(candidate);
+  }, [
+    gemini.reviewRequest,
+    gemini.clearReviewRequest,
+    mode,
+    state.incidentId,
+    state.stage,
+    state.candidates,
+    state.results,
+  ]);
   const download = () => {
     const file = new Blob(
       [
